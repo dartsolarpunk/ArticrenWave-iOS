@@ -3,9 +3,17 @@
   "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0">
 <dict>
+    <key>application-identifier</key>
+    <string>L7AHWS9Q6V.ArticrenWave</string>
+    <key>keychain-access-groups</key>
+    <array>
+        <string>L7AHWS9Q6V.ArticrenWave</string>
+    </array>
     <key>com.apple.developer.applesignin</key>
     <array>
         <string>Default</string>
     </array>
+    <key>get-task-allow</key>
+    <false/>
 </dict>
 </plist>
