@@ -16,7 +16,7 @@ struct ArticrenWaveLogoMark: View {
                 p.addLine(to: CGPoint(x: s*0.08, y: s*0.95))
                 p.addLine(to: CGPoint(x: s*0.35, y: s*0.45))
                 p.addLine(to: CGPoint(x: s*0.24, y: s*0.45))
-                p.close()
+                p.closeSubpath()
             }
             ctx.fill(bolt, with: .linearGradient(
                 Gradient(colors: [Color(hex: "#FF00A0"), Color(hex: "#8B00FF")]),
@@ -29,7 +29,7 @@ struct ArticrenWaveLogoMark: View {
                 p.addLine(to: CGPoint(x: s*0.90, y: s*0.10))
                 p.addLine(to: CGPoint(x: s*0.85, y: s*0.20))
                 p.addLine(to: CGPoint(x: s*0.25, y: s*0.18))
-                p.close()
+                p.closeSubpath()
             }
             ctx.fill(slash, with: .linearGradient(
                 Gradient(colors: [Color(hex: "#8B00FF"), Color(hex: "#C040FB")]),
