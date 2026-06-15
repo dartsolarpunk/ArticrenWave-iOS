@@ -8,6 +8,7 @@ struct ExportSheet: View {
     @Environment(\.dismiss)        private var dismiss
     @State private var formatIndex: Int = 0
     @State private var statusMessage: String = ""
+    @State private var pdfLandscape: Bool = true
     @State private var exportURL: URL? = nil
     @State private var showShareSheet = false
 
@@ -64,11 +65,40 @@ struct ExportSheet: View {
                             .clipShape(RoundedRectangle(cornerRadius: 12))
                     }
 
+                    // PDF Export
+                    VStack(spacing: 8) {
+                        HStack {
+                            Label("Export PDF Score", systemImage: "doc.richtext")
+                                .font(.system(size: 13, weight: .semibold))
+                                .foregroundColor(appState.theme.secondary)
+                            Spacer()
+                            Picker("", selection: $pdfLandscape) {
+                                Text("Portrait").tag(false)
+                                Text("Landscape").tag(true)
+                            }
+                            .pickerStyle(.segmented)
+                            .frame(width: 160)
+                        }
+                        Button {
+                            exportPDF()
+                        } label: {
+                            Label("Export PDF (\(pdfLandscape ? "Landscape" : "Portrait"))", systemImage: "arrow.down.doc")
+                                .font(.system(size: 14, weight: .semibold))
+                                .foregroundColor(.white)
+                                .frame(maxWidth: .infinity).frame(height: 48)
+                                .background(appState.theme.secondary.opacity(0.2))
+                                .overlay(RoundedRectangle(cornerRadius: 12).stroke(appState.theme.secondary.opacity(0.5), lineWidth: 1))
+                                .clipShape(RoundedRectangle(cornerRadius: 12))
+                        }
+                    }
+                    .padding(14)
+                    .background(Color.white.opacity(0.04))
+                    .clipShape(RoundedRectangle(cornerRadius: 12))
+
                     // Save project
                     Button {
-                        ProjectManager.shared.save(document: scoreEngine.document) { _, _ in
-                            statusMessage = "Saved!"
-                        }
+                        ProjectBrowserState.shared.save(document: scoreEngine.document)
+                        statusMessage = "Saved to Projects!"
                     } label: {
                         Label("Save Project (.awscore)", systemImage: "folder.badge.plus")
                             .font(.system(size: 14, weight: .semibold))
@@ -98,6 +128,121 @@ struct ExportSheet: View {
         .sheet(isPresented: $showShareSheet) {
             if let url = exportURL { ShareSheet(activityItems: [url]) }
         }
+    }
+
+    func exportPDF() {
+        let doc = scoreEngine.document
+        let pageSize = pdfLandscape
+            ? CGRect(x: 0, y: 0, width: 1122, height: 794)   // A4 landscape 96dpi
+            : CGRect(x: 0, y: 0, width: 794, height: 1122)   // A4 portrait
+
+        let tmpURL = FileManager.default.temporaryDirectory
+            .appendingPathComponent("\(doc.title)_score.pdf")
+
+        guard let pdf = CGContext(tmpURL as CFURL, mediaBox: nil, nil) else { return }
+
+        var pageBox = pageSize
+        pdf.beginPDFPage(nil)
+
+        // Professional score header
+        let title = doc.title as CFString
+        let attrs: CFDictionary = [
+            kCTFontAttributeName: CTFontCreateWithName("Helvetica-Bold" as CFString, 24, nil),
+            kCTForegroundColorAttributeName: CGColor(gray: 0, alpha: 1)
+        ] as CFDictionary
+
+        // Draw title
+        if let titleStr = CFAttributedStringCreate(nil, title, attrs) {
+            if let line = CTLineCreateWithAttributedString(titleStr) {
+                pdf.textPosition = CGPoint(x: 60, y: pageBox.height - 60)
+                CTLineDraw(line, pdf)
+            }
+        }
+
+        // Draw tempo marking
+        let tempoStr = "\(doc.tempo) BPM" as CFString
+        let tempoAttrs: CFDictionary = [
+            kCTFontAttributeName: CTFontCreateWithName("Helvetica" as CFString, 12, nil),
+            kCTForegroundColorAttributeName: CGColor(gray: 0.3, alpha: 1)
+        ] as CFDictionary
+        if let tempoAS = CFAttributedStringCreate(nil, tempoStr, tempoAttrs),
+           let tempoLine = CTLineCreateWithAttributedString(tempoAS) {
+            pdf.textPosition = CGPoint(x: 60, y: pageBox.height - 85)
+            CTLineDraw(tempoLine, pdf)
+        }
+
+        // Draw staves for each part
+        let staffTop: CGFloat = pageBox.height - 130
+        let staffSpacing: CGFloat = 120
+        let leftMargin: CGFloat = 80
+        let rightMargin: CGFloat = pageBox.width - 60
+        let lineSpacing: CGFloat = 10
+
+        for (pi, part) in doc.parts.enumerated() {
+            let baseY = staffTop - CGFloat(pi) * staffSpacing
+
+            // Part label
+            let labelStr = part.label as CFString
+            let labelAttrs: CFDictionary = [
+                kCTFontAttributeName: CTFontCreateWithName("Helvetica" as CFString, 10, nil),
+                kCTForegroundColorAttributeName: CGColor(gray: 0.4, alpha: 1)
+            ] as CFDictionary
+            if let labelAS = CFAttributedStringCreate(nil, labelStr, labelAttrs),
+               let labelLine = CTLineCreateWithAttributedString(labelAS) {
+                pdf.textPosition = CGPoint(x: leftMargin - 70, y: baseY - 16)
+                CTLineDraw(labelLine, pdf)
+            }
+
+            // Draw 5 staff lines
+            pdf.setStrokeColor(CGColor(gray: 0.1, alpha: 1))
+            pdf.setLineWidth(0.8)
+            for i in 0...4 {
+                let y = baseY - CGFloat(i) * lineSpacing
+                pdf.move(to: CGPoint(x: leftMargin, y: y))
+                pdf.addLine(to: CGPoint(x: rightMargin, y: y))
+            }
+            pdf.strokePath()
+
+            // Clef symbol (text approximation)
+            let clefStr = (part.clef == .treble ? "𝄞" : "𝄢") as CFString
+            let clefAttrs: CFDictionary = [
+                kCTFontAttributeName: CTFontCreateWithName("Times New Roman" as CFString, 40, nil),
+                kCTForegroundColorAttributeName: CGColor(gray: 0, alpha: 1)
+            ] as CFDictionary
+            if let clefAS = CFAttributedStringCreate(nil, clefStr, clefAttrs),
+               let clefLine = CTLineCreateWithAttributedString(clefAS) {
+                pdf.textPosition = CGPoint(x: leftMargin + 4, y: baseY - 32)
+                CTLineDraw(clefLine, pdf)
+            }
+
+            // Bar lines between measures
+            let measureWidth = (rightMargin - leftMargin - 50) / CGFloat(max(part.measures.count, 1))
+            for mi in 0...part.measures.count {
+                let x = leftMargin + 50 + CGFloat(mi) * measureWidth
+                pdf.move(to: CGPoint(x: x, y: baseY))
+                pdf.addLine(to: CGPoint(x: x, y: baseY - lineSpacing * 4))
+                pdf.strokePath()
+            }
+        }
+
+        // Footer
+        let footer = "© Articren Wave — DART Meadow LLC & Radical Deepscale LLC" as CFString
+        let footerAttrs: CFDictionary = [
+            kCTFontAttributeName: CTFontCreateWithName("Helvetica" as CFString, 9, nil),
+            kCTForegroundColorAttributeName: CGColor(gray: 0.6, alpha: 1)
+        ] as CFDictionary
+        if let footerAS = CFAttributedStringCreate(nil, footer, footerAttrs),
+           let footerLine = CTLineCreateWithAttributedString(footerAS) {
+            pdf.textPosition = CGPoint(x: 60, y: 30)
+            CTLineDraw(footerLine, pdf)
+        }
+
+        pdf.endPDFPage()
+        pdf.closePDF()
+
+        exportURL = tmpURL
+        showShareSheet = true
+        statusMessage = "PDF ready — \(pdfLandscape ? "Landscape" : "Portrait") A4"
     }
 }
 

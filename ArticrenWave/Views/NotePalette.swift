@@ -1,148 +1,193 @@
-// NotePalette.swift — Note duration + edit mode selector
+// NotePalette.swift — Professional note input toolbar with vector symbols
 import SwiftUI
 
 struct NotePalette: View {
-    @Environment(AppState.self) private var appState
+    @Environment(AppState.self)    private var appState
     @Environment(ScoreEngine.self) private var scoreEngine
 
     var body: some View {
         ScrollView(.horizontal, showsIndicators: false) {
-            HStack(spacing: 6) {
-                // Select mode
-                PaletteButton(
-                    label: "✦",
+            HStack(spacing: 2) {
+
+                // ── SELECT ──────────────────────────────────────
+                PaletteKey(
+                    label: { Image(systemName: "cursorarrow").font(.system(size: 14)) },
                     sublabel: "Select",
-                    isActive: { if case .select = scoreEngine.editMode { return true }; return false }()
+                    isActive: { if case .select = scoreEngine.editMode { return true }; return false }(),
+                    accent: appState.theme.accent
                 ) { scoreEngine.editMode = .select }
 
-                Divider().frame(height: 28).background(Color.white.opacity(0.15))
+                paletteDivider
 
-                // Note durations
+                // ── NOTES ───────────────────────────────────────
                 ForEach(NoteDuration.allCases, id: \.self) { dur in
-                    PaletteButton(
-                        label: noteSymbol(dur),
-                        sublabel: dur.rawValue.capitalized,
-                        isActive: {
-                            if case .addNote(let d) = scoreEngine.editMode { return d == dur }
-                            return false
-                        }()
+                    PaletteKey(
+                        label: { NoteSymbolView(duration: dur, color: noteActive(dur) ? appState.theme.accent : .white, size: 18) },
+                        sublabel: dur.shortLabel,
+                        isActive: noteActive(dur),
+                        accent: appState.theme.accent
                     ) { scoreEngine.editMode = .addNote(dur) }
                 }
 
-                Divider().frame(height: 28).background(Color.white.opacity(0.15))
+                paletteDivider
 
-                // Rest durations
-                ForEach(RestDuration.allCases, id: \.self) { dur in
-                    PaletteButton(
-                        label: restSymbol(dur),
-                        sublabel: "Rest",
-                        isActive: {
-                            if case .addRest(let d) = scoreEngine.editMode { return d == dur }
-                            return false
-                        }()
-                    ) { scoreEngine.editMode = .addRest(dur) }
+                // ── RESTS ───────────────────────────────────────
+                ForEach(NoteDuration.allCases, id: \.self) { dur in
+                    PaletteKey(
+                        label: { NoteSymbolView(duration: dur, color: restActive(dur) ? appState.theme.accent : .white.opacity(0.7), size: 18, isRest: true) },
+                        sublabel: "R",
+                        isActive: restActive(dur),
+                        accent: appState.theme.accent
+                    ) {
+                        scoreEngine.editMode = .addRest(restDurationFor(dur))
+                    }
                 }
 
-                Divider().frame(height: 28).background(Color.white.opacity(0.15))
+                paletteDivider
 
-                // Accidentals
-                PaletteButton(label: "♯", sublabel: "Sharp",
-                    isActive: { if case .addAccidental(let a) = scoreEngine.editMode { return a == .sharp }; return false }()
+                // ── ACCIDENTALS ─────────────────────────────────
+                PaletteKey(
+                    label: { SharpSymbol(color: accidentalActive(.sharp) ? appState.theme.accent : .white, size: 14) },
+                    sublabel: "Sharp",
+                    isActive: accidentalActive(.sharp),
+                    accent: appState.theme.accent
                 ) { scoreEngine.editMode = .addAccidental(.sharp) }
 
-                PaletteButton(label: "♭", sublabel: "Flat",
-                    isActive: { if case .addAccidental(let a) = scoreEngine.editMode { return a == .flat }; return false }()
+                PaletteKey(
+                    label: { FlatSymbol(color: accidentalActive(.flat) ? appState.theme.accent : .white, size: 14) },
+                    sublabel: "Flat",
+                    isActive: accidentalActive(.flat),
+                    accent: appState.theme.accent
                 ) { scoreEngine.editMode = .addAccidental(.flat) }
 
-                PaletteButton(label: "♮", sublabel: "Nat.",
-                    isActive: { if case .addAccidental(let a) = scoreEngine.editMode { return a == .natural }; return false }()
+                PaletteKey(
+                    label: { NaturalSymbol(color: accidentalActive(.natural) ? appState.theme.accent : .white, size: 14) },
+                    sublabel: "Nat.",
+                    isActive: accidentalActive(.natural),
+                    accent: appState.theme.accent
                 ) { scoreEngine.editMode = .addAccidental(.natural) }
 
-                Divider().frame(height: 28).background(Color.white.opacity(0.15))
+                paletteDivider
 
-                // Tie / Slur
-                PaletteButton(label: "⌢", sublabel: "Tie",
-                    isActive: { if case .addTie = scoreEngine.editMode { return true }; return false }()
+                // ── TIE / SLUR ──────────────────────────────────
+                PaletteKey(
+                    label: { TieCurveSymbol(color: isTie ? appState.theme.accent : .white, size: 18, isSlur: false) },
+                    sublabel: "Tie",
+                    isActive: isTie,
+                    accent: appState.theme.accent
                 ) { scoreEngine.editMode = .addTie }
 
-                PaletteButton(label: "⌣", sublabel: "Slur",
-                    isActive: { if case .addSlur = scoreEngine.editMode { return true }; return false }()
+                PaletteKey(
+                    label: { TieCurveSymbol(color: isSlur ? appState.theme.accent : .white, size: 18, isSlur: true) },
+                    sublabel: "Slur",
+                    isActive: isSlur,
+                    accent: appState.theme.accent
                 ) { scoreEngine.editMode = .addSlur }
 
-                // Accent
-                PaletteButton(label: ">", sublabel: "Accent",
-                    isActive: { if case .addAccent = scoreEngine.editMode { return true }; return false }()
+                // ── ACCENT ──────────────────────────────────────
+                PaletteKey(
+                    label: { AccentSymbol(color: isAccent ? appState.theme.accent : .white, size: 14) },
+                    sublabel: "Accent",
+                    isActive: isAccent,
+                    accent: appState.theme.accent
                 ) { scoreEngine.editMode = .addAccent }
 
-                Divider().frame(height: 28).background(Color.white.opacity(0.15))
+                paletteDivider
 
-                // Delete
-                PaletteButton(label: "⌫", sublabel: "Delete",
-                    isActive: { if case .delete = scoreEngine.editMode { return true }; return false }(),
+                // ── DELETE ──────────────────────────────────────
+                PaletteKey(
+                    label: { Image(systemName: "delete.backward").font(.system(size: 14)) },
+                    sublabel: "Erase",
+                    isActive: isDelete,
                     accent: .red
                 ) { scoreEngine.editMode = .delete }
             }
-            .padding(.horizontal, 8)
-            .padding(.vertical, 4)
+            .padding(.horizontal, 10)
+            .padding(.vertical, 6)
         }
-        .background(Color.white.opacity(0.04))
-        .clipShape(RoundedRectangle(cornerRadius: 10))
+        .background(
+            Color(hex: "#0C0D18")
+                .overlay(Rectangle().fill(Color.white.opacity(0.03)))
+        )
+        .overlay(Rectangle().fill(Color.white.opacity(0.06)).frame(height: 1), alignment: .bottom)
     }
 
-    func noteSymbol(_ dur: NoteDuration) -> String {
-        switch dur {
-        case .whole: return "𝅝"
-        case .half: return "𝅗𝅥"
-        case .quarter: return "𝅘𝅥"
-        case .eighth: return "𝅘𝅥𝅮"
-        case .sixteenth: return "𝅘𝅥𝅯"
-        }
+    var paletteDivider: some View {
+        Rectangle()
+            .fill(Color.white.opacity(0.1))
+            .frame(width: 1, height: 36)
+            .padding(.horizontal, 4)
     }
 
-    func restSymbol(_ dur: RestDuration) -> String {
+    // ── Mode checks ─────────────────────────────────────────────
+    func noteActive(_ dur: NoteDuration) -> Bool {
+        if case .addNote(let d) = scoreEngine.editMode { return d == dur }
+        return false
+    }
+    func restActive(_ dur: NoteDuration) -> Bool {
+        if case .addRest(let d) = scoreEngine.editMode { return d == restDurationFor(dur) }
+        return false
+    }
+    func accidentalActive(_ acc: Accidental) -> Bool {
+        if case .addAccidental(let a) = scoreEngine.editMode { return a == acc }
+        return false
+    }
+    func restDurationFor(_ dur: NoteDuration) -> RestDuration {
         switch dur {
-        case .whole: return "𝄻"
-        case .half: return "𝄼"
-        case .quarter: return "𝄽"
-        case .eighth: return "𝄾"
-        case .sixteenth: return "𝄿"
+        case .whole:     return .whole
+        case .half:      return .half
+        case .quarter:   return .quarter
+        case .eighth:    return .eighth
+        case .sixteenth: return .sixteenth
+        }
+    }
+    var isTie:    Bool { if case .addTie    = scoreEngine.editMode { return true }; return false }
+    var isSlur:   Bool { if case .addSlur   = scoreEngine.editMode { return true }; return false }
+    var isAccent: Bool { if case .addAccent = scoreEngine.editMode { return true }; return false }
+    var isDelete: Bool { if case .delete    = scoreEngine.editMode { return true }; return false }
+}
+
+extension NoteDuration {
+    var shortLabel: String {
+        switch self {
+        case .whole:     return "Whole"
+        case .half:      return "Half"
+        case .quarter:   return "Qtr"
+        case .eighth:    return "8th"
+        case .sixteenth: return "16th"
         }
     }
 }
 
-struct PaletteButton: View {
-    @Environment(AppState.self) private var appState
-
-    let label: String
+// MARK: - Palette Key
+struct PaletteKey<Label: View>: View {
+    @ViewBuilder let label: () -> Label
     let sublabel: String
     let isActive: Bool
-    var accent: Color? = nil
+    let accent: Color
     let action: () -> Void
-
-    var activeColor: Color {
-        accent ?? appState.theme.accent
-    }
 
     var body: some View {
         Button(action: action) {
-            VStack(spacing: 1) {
-                Text(label)
-                    .font(.system(size: 16, weight: .medium))
-                    .foregroundColor(isActive ? activeColor : .white.opacity(0.7))
-
+            VStack(spacing: 3) {
+                label()
+                    .frame(height: 24)
                 Text(sublabel)
-                    .font(.system(size: 8, weight: .medium))
-                    .foregroundColor(isActive ? activeColor.opacity(0.8) : .white.opacity(0.3))
+                    .font(.system(size: 8, weight: .medium, design: .monospaced))
+                    .foregroundColor(isActive ? accent : .white.opacity(0.35))
+                    .lineLimit(1)
             }
-            .frame(width: 38, height: 42)
+            .foregroundColor(isActive ? accent : .white.opacity(0.8))
+            .frame(width: 44, height: 50)
             .background(
-                RoundedRectangle(cornerRadius: 7)
-                    .fill(isActive ? activeColor.opacity(0.15) : Color.clear)
+                RoundedRectangle(cornerRadius: 8)
+                    .fill(isActive ? accent.opacity(0.14) : Color.white.opacity(0.04))
                     .overlay(
-                        RoundedRectangle(cornerRadius: 7)
-                            .stroke(isActive ? activeColor.opacity(0.5) : Color.clear, lineWidth: 1)
+                        RoundedRectangle(cornerRadius: 8)
+                            .stroke(isActive ? accent.opacity(0.55) : Color.clear, lineWidth: 1)
                     )
             )
         }
+        .buttonStyle(.plain)
     }
 }
