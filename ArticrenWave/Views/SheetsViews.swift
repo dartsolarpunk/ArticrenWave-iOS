@@ -46,19 +46,8 @@ struct ExportSheet: View {
                                 .foregroundColor(.white.opacity(0.5))
                         }
                     } else {
-                        ActionButton(label: "Export Audio", icon: "music.quarternote.3", color: appState.theme.accent) {
-                            // audioEngine.renderScoreToAudio(
-                                document: scoreEngine.document,
-                                format: selectedFormat
-                            ) { url in
-                                if let url = url {
-                                    exportURL = url
-                                    showShareSheet = true
-                                    statusMessage = "Render complete!"
-                                } else {
-                                    statusMessage = "Render failed. Check audio setup."
-                                }
-                            }
+                        ActionButton(label: "Export Audio (\(selectedFormat.rawValue))", icon: "music.quarternote.3", color: appState.theme.accent) {
+                            statusMessage = "Audio export coming soon — score saved locally."
                         }
                     }
 
