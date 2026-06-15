@@ -1,105 +1,223 @@
-// ScoreEditorView.swift — Score canvas (crash-safe build)
-// Articren Wave · © 2026 DART Meadow LLC & Radical Deepscale LLC
+// ScoreEditorView.swift — Professional score canvas with drag, zoom, pan, cursor
 import SwiftUI
 
 // MARK: - Score Editor Container
 struct ScoreEditorView: View {
-    @Environment(AppState.self) private var appState
+    @Environment(AppState.self)    private var appState
     @Environment(ScoreEngine.self) private var scoreEngine
+    @State private var zoomScale: CGFloat = 1.0
+    @State private var panOffset: CGSize  = .zero
 
     var body: some View {
         VStack(spacing: 0) {
-            NotePalette()
-                .padding(.horizontal, 8)
-                .padding(.vertical, 6)
+            NotePalette().frame(height: 62)
 
             if let err = scoreEngine.validationError {
-                Text(err)
-                    .font(.system(size: 11, design: .monospaced))
-                    .foregroundColor(appState.theme.accent)
-                    .padding(.horizontal, 12)
-                    .padding(.vertical, 4)
-                    .frame(maxWidth: .infinity, alignment: .leading)
-                    .background(appState.theme.accent.opacity(0.1))
-                    .onTapGesture { scoreEngine.validationError = nil }
+                HStack(spacing: 8) {
+                    Image(systemName: "exclamationmark.triangle.fill")
+                        .foregroundColor(.orange).font(.system(size: 11))
+                    Text(err).font(.system(size: 11)).foregroundColor(.orange.opacity(0.9))
+                    Spacer()
+                    Button { scoreEngine.validationError = nil } label: {
+                        Image(systemName: "xmark").font(.system(size: 10)).foregroundColor(.white.opacity(0.4))
+                    }
+                }
+                .padding(.horizontal, 14).padding(.vertical, 8)
+                .background(Color.orange.opacity(0.12))
+                .overlay(Rectangle().fill(Color.orange.opacity(0.3)).frame(height:1), alignment: .bottom)
             }
 
-            ScrollView([.horizontal, .vertical], showsIndicators: true) {
-                SafeScoreCanvas()
+            // Pinch + pan canvas
+            GeometryReader { geo in
+                ScrollView([.horizontal, .vertical], showsIndicators: true) {
+                    ScorePageView()
+                        .scaleEffect(zoomScale)
+                        .frame(
+                            width:  max(geo.size.width,  800 * zoomScale),
+                            height: max(geo.size.height, 1100 * zoomScale)
+                        )
+                }
+                .background(Color(hex: "#080910"))
+                .gesture(
+                    MagnificationGesture()
+                        .onChanged { v in
+                            zoomScale = max(0.4, min(3.0, v))
+                        }
+                )
             }
-            .background(appState.theme.background)
         }
     }
 }
 
-// MARK: - Safe Score Canvas
-struct SafeScoreCanvas: View {
-    @Environment(AppState.self) private var appState
+// MARK: - Score Page (title header + staves)
+struct ScorePageView: View {
+    @Environment(AppState.self)    private var appState
     @Environment(ScoreEngine.self) private var scoreEngine
-
-    let lineSpacing:  CGFloat = 9
-    let measureWidth: CGFloat = 200
-    let leftPad:      CGFloat = 24
+    @State private var audio = AWAudioPlayer.shared
+    @State private var isEditingTitle    = false
+    @State private var isEditingComposer = false
+    @State private var composerName: String = ""
+    @State private var scoreDate: String    = ""
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 70) {
+        VStack(alignment: .leading, spacing: 0) {
+
+            // ── Score header ──────────────────────────────────────
+            VStack(spacing: 4) {
+                // Title (tappable to edit)
+                if isEditingTitle {
+                    TextField("Score title", text: Binding(
+                        get: { scoreEngine.document.title },
+                        set: { scoreEngine.document.title = $0 }
+                    ))
+                    .font(.system(size: 26, weight: .bold, design: .serif))
+                    .foregroundColor(.white)
+                    .multilineTextAlignment(.center)
+                    .textFieldStyle(.plain)
+                    .onSubmit { isEditingTitle = false }
+                    .autocorrectionDisabled()
+                } else {
+                    Text(scoreEngine.document.title)
+                        .font(.system(size: 26, weight: .bold, design: .serif))
+                        .foregroundColor(.white)
+                        .onTapGesture { isEditingTitle = true }
+                }
+
+                // Composer
+                if isEditingComposer {
+                    TextField("Composer name", text: $composerName)
+                        .font(.system(size: 13, design: .serif))
+                        .foregroundColor(.white.opacity(0.6))
+                        .multilineTextAlignment(.center)
+                        .textFieldStyle(.plain)
+                        .onSubmit { isEditingComposer = false }
+                } else {
+                    Text(composerName.isEmpty ? "Tap to add composer" : composerName)
+                        .font(.system(size: 13, design: .serif))
+                        .foregroundColor(composerName.isEmpty ? .white.opacity(0.2) : .white.opacity(0.6))
+                        .onTapGesture { isEditingComposer = true }
+                }
+
+                // Date
+                Text(scoreDate.isEmpty ? formattedDate : scoreDate)
+                    .font(.system(size: 11, design: .serif))
+                    .foregroundColor(.white.opacity(0.3))
+                    .onTapGesture {
+                        scoreDate = scoreDate.isEmpty ? formattedDate : ""
+                    }
+
+                // Tempo marking
+                HStack(spacing: 4) {
+                    QuarterNoteSymbol(color: .white.opacity(0.6), size: 14)
+                        .frame(width: 10, height: 18)
+                    Text("= \(scoreEngine.document.tempo)")
+                        .font(.system(size: 12, design: .serif))
+                        .foregroundColor(.white.opacity(0.5))
+                }
+                .padding(.top, 4)
+
+                Rectangle()
+                    .fill(Color.white.opacity(0.15))
+                    .frame(height: 1)
+                    .padding(.top, 12)
+            }
+            .frame(maxWidth: .infinity)
+            .padding(.horizontal, 32)
+            .padding(.top, 24)
+            .padding(.bottom, 16)
+
+            // ── Staves ────────────────────────────────────────────
             if scoreEngine.document.parts.isEmpty {
                 Text("Tap Layout to add a staff")
                     .font(.system(size: 13, design: .monospaced))
-                    .foregroundColor(.white.opacity(0.3))
+                    .foregroundColor(.white.opacity(0.25))
                     .padding(40)
             } else {
-                ForEach(Array(scoreEngine.document.parts.enumerated()),
-                        id: \.element.id) { pi, part in
-                    SafeStaffRow(
-                        partIndex:   pi,
-                        part:        part,
-                        lineSpacing: lineSpacing,
-                        measureW:    measureWidth
-                    )
+                ForEach(Array(scoreEngine.document.parts.enumerated()), id: \.element.id) { pi, part in
+                    ZStack {
+                        DraggableStaffRow(partIndex: pi, part: part)
+                        // Playback cursor overlay
+                        if audio.isPlaying || audio.isPaused {
+                            PlaybackCursorOverlay(
+                                progress: audio.progress,
+                                measureCount: part.measures.count
+                            )
+                        }
+                    }
+                    .padding(.bottom, 60)
                 }
             }
+
+            Spacer().frame(height: 48)
         }
-        .padding(leftPad)
+        .padding(.horizontal, 16)
+        .onAppear {
+            composerName = UserDefaults.standard.string(forKey: "aw_composer_name") ?? ""
+        }
+        .onChange(of: composerName) { _, v in
+            UserDefaults.standard.set(v, forKey: "aw_composer_name")
+        }
+    }
+
+    var formattedDate: String {
+        let f = DateFormatter()
+        f.dateStyle = .long
+        return f.string(from: Date())
     }
 }
 
-// MARK: - Safe Staff Row
-struct SafeStaffRow: View {
+// MARK: - Playback cursor overlay
+struct PlaybackCursorOverlay: View {
     @Environment(AppState.self) private var appState
+    let progress: Double
+    let measureCount: Int
+
+    var body: some View {
+        GeometryReader { geo in
+            let x = CGFloat(progress) * geo.size.width
+            Rectangle()
+                .fill(appState.theme.accent.opacity(0.6))
+                .frame(width: 2)
+                .offset(x: x)
+                .shadow(color: appState.theme.accent, radius: 4)
+                .animation(.linear(duration: 0.08), value: progress)
+        }
+    }
+}
+
+// MARK: - Draggable Staff Row
+struct DraggableStaffRow: View {
+    @Environment(AppState.self)    private var appState
     @Environment(ScoreEngine.self) private var scoreEngine
 
-    let partIndex:   Int
-    let part:        Part
-    let lineSpacing: CGFloat
-    let measureW:    CGFloat
+    let partIndex: Int
+    let part: Part
+
+    let lineSpacing: CGFloat  = 9
+    let measureWidth: CGFloat = 220
 
     var staffH: CGFloat { lineSpacing * 4 }
-    var rowH:   CGFloat { staffH + 60 }
+    var rowH:   CGFloat { staffH + 70 }
 
     var body: some View {
         VStack(alignment: .leading, spacing: 4) {
-            // Part label
             Text(part.label)
                 .font(.system(size: 10, weight: .medium, design: .monospaced))
                 .foregroundColor(.white.opacity(0.4))
 
             ScrollView(.horizontal, showsIndicators: false) {
                 HStack(spacing: 0) {
-                    // Clef
                     SafeClefView(clef: part.clef, lineSpacing: lineSpacing)
-                        .frame(width: 44, height: rowH)
+                        .frame(width: 48, height: rowH)
 
-                    // Measures
-                    ForEach(Array(part.measures.enumerated()),
-                            id: \.element.id) { mi, measure in
-                        SafeMeasureView(
+                    ForEach(Array(part.measures.enumerated()), id: \.element.id) { mi, measure in
+                        DraggableMeasureView(
                             measure:      measure,
                             partIndex:    partIndex,
                             measureIndex: mi,
                             clef:         part.clef,
                             lineSpacing:  lineSpacing,
-                            width:        measureW,
+                            width:        measureWidth,
                             rowH:         rowH
                         )
                     }
@@ -109,37 +227,9 @@ struct SafeStaffRow: View {
     }
 }
 
-// MARK: - Safe Clef
-struct SafeClefView: View {
-    let clef:        Clef
-    let lineSpacing: CGFloat
-
-    var staffH: CGFloat { lineSpacing * 4 }
-
-    var body: some View {
-        Canvas { ctx, size in
-            let top = (size.height - staffH) / 2
-            for i in 0...4 {
-                let y = top + CGFloat(i) * lineSpacing
-                var p = Path()
-                p.move(to:    CGPoint(x: 4, y: y))
-                p.addLine(to: CGPoint(x: size.width, y: y))
-                ctx.stroke(p, with: .color(.white.opacity(0.65)), lineWidth: 0.7)
-            }
-            let symbol = clef == .treble ? "𝄞" : "𝄢"
-            let size2: CGFloat = clef == .treble ? 36 : 26
-            ctx.draw(
-                Text(symbol).font(.system(size: size2)).foregroundColor(.white),
-                at: CGPoint(x: size.width / 2, y: size.height / 2),
-                anchor: .center
-            )
-        }
-    }
-}
-
-// MARK: - Safe Measure View
-struct SafeMeasureView: View {
-    @Environment(AppState.self) private var appState
+// MARK: - Draggable Measure View
+struct DraggableMeasureView: View {
+    @Environment(AppState.self)    private var appState
     @Environment(ScoreEngine.self) private var scoreEngine
 
     let measure:      Measure
@@ -152,17 +242,43 @@ struct SafeMeasureView: View {
 
     var staffH: CGFloat { lineSpacing * 4 }
 
-    // Beat → X position
+    // Drag state
+    @State private var draggingID:     UUID?   = nil
+    @State private var dragOffset:     CGSize  = .zero
+    @State private var ghostPitch:     Pitch?  = nil
+    @State private var ghostPos:       CGPoint? = nil
+    // Lasso selection
+    @State private var lassoStart:    CGPoint? = nil
+    @State private var lassoEnd:      CGPoint? = nil
+    @State private var lassoSelected: Set<UUID> = []
+
     func xFor(_ beat: Double) -> CGFloat {
-        let usable = width - 32
-        return 16 + CGFloat(beat / 4.0) * usable
+        16 + CGFloat(beat / 4.0) * (width - 32)
     }
 
-    // Staff position → Y position
     func yFor(_ staffPos: Int) -> CGFloat {
-        let center  = rowH / 2
+        rowH / 2 - CGFloat(staffPos - clef.middleCOffset) * (lineSpacing / 2)
+    }
+
+    func staffPosAt(y: CGFloat) -> Int {
         let halfStep = lineSpacing / 2
-        return center - CGFloat(staffPos - clef.middleCOffset) * halfStep
+        let offset   = (rowH / 2 - y) / halfStep
+        return Int(offset.rounded()) + clef.middleCOffset
+    }
+
+    func pitchAt(staffPos: Int) -> Pitch {
+        let whites: [PitchClass] = [.C, .D, .E, .F, .G, .A, .B]
+        var oct = 4 + staffPos / 7
+        var idx = ((staffPos % 7) + 7) % 7
+        return Pitch(pitchClass: whites[idx], octave: max(1, min(7, oct)))
+    }
+
+    var lassoRect: CGRect? {
+        guard let s = lassoStart, let e = lassoEnd else { return nil }
+        return CGRect(
+            x: min(s.x, e.x), y: min(s.y, e.y),
+            width: abs(e.x - s.x), height: abs(e.y - s.y)
+        )
     }
 
     var body: some View {
@@ -172,205 +288,171 @@ struct SafeMeasureView: View {
                 let top = (size.height - staffH) / 2
                 for i in 0...4 {
                     let y = top + CGFloat(i) * lineSpacing
-                    var p = Path()
-                    p.move(to:    CGPoint(x: 0, y: y))
-                    p.addLine(to: CGPoint(x: size.width, y: y))
+                    var p = Path(); p.move(to: CGPoint(x: 0, y: y)); p.addLine(to: CGPoint(x: size.width, y: y))
                     ctx.stroke(p, with: .color(.white.opacity(0.6)), lineWidth: 0.7)
                 }
                 var bar = Path()
-                bar.move(to:    CGPoint(x: size.width - 1, y: (size.height - staffH) / 2))
-                bar.addLine(to: CGPoint(x: size.width - 1, y: (size.height + staffH) / 2))
+                bar.move(to: CGPoint(x: size.width - 1, y: top))
+                bar.addLine(to: CGPoint(x: size.width - 1, y: top + staffH))
                 ctx.stroke(bar, with: .color(.white.opacity(0.45)), lineWidth: 1)
             }
 
-            // Contents
+            // Middle C ledger line helper
+            Canvas { ctx, size in
+                let midCY = yFor(0)
+                if midCY < 0 || midCY > size.height { return }
+                var p = Path()
+                p.move(to: CGPoint(x: xFor(0) - 10, y: midCY))
+                p.addLine(to: CGPoint(x: xFor(0) + 10, y: midCY))
+                ctx.stroke(p, with: .color(.white.opacity(0.3)), lineWidth: 0.5)
+            }
+
+            // Notes and rests
             ForEach(measure.contents) { content in
                 switch content {
                 case .chord(let chord):
-                    SafeChordView(
-                        chord:      chord,
-                        xPos:       xFor(chord.beatPosition),
-                        yFor:       yFor,
-                        lineSpacing: lineSpacing,
-                        isSelected: scoreEngine.selectedChordID == chord.id
+                    let isSelected = lassoSelected.contains(chord.id) || scoreEngine.selectedChordID == chord.id
+                    let isDragging = draggingID == chord.id
+                    Group {
+                        ForEach(chord.notes) { note in
+                            let yPos = yFor(note.pitch.staffPosition) + (isDragging ? dragOffset.height : 0)
+                            let xPos = xFor(chord.beatPosition)
+                            NoteHeadCanvas(
+                                duration: chord.duration,
+                                xPos: xPos,
+                                yPos: yPos,
+                                lineSpacing: lineSpacing,
+                                isSelected: isSelected,
+                                accent: appState.theme.accent
+                            )
+                            // Accidental
+                            if note.accidental != .none {
+                                Text(accidentalText(note.accidental))
+                                    .font(.system(size: 11))
+                                    .foregroundColor(.white.opacity(0.9))
+                                    .position(x: xPos - lineSpacing * 1.5, y: yPos)
+                            }
+                        }
+                        // Stem
+                        if chord.duration != .whole, let first = chord.notes.first {
+                            let sY = yFor(first.pitch.staffPosition) + (isDragging ? dragOffset.height : 0)
+                            StemView(xPos: xFor(chord.beatPosition), headY: sY,
+                                     tailCount: chord.duration.tailCount,
+                                     isSelected: isSelected, accent: appState.theme.accent)
+                        }
+                    }
+                    .contentShape(Rectangle().size(CGSize(width: 40, height: 80))
+                        .offset(x: xFor(chord.beatPosition) - 20, y: 0))
+                    .gesture(
+                        DragGesture(minimumDistance: 4)
+                            .onChanged { val in
+                                if draggingID == nil {
+                                    draggingID = chord.id
+                                    scoreEngine.selectedChordID = chord.id
+                                }
+                                dragOffset = val.translation
+                                let sp = staffPosAt(y: yFor(chord.notes.first?.pitch.staffPosition ?? 0) + val.translation.height)
+                                ghostPitch = pitchAt(staffPos: sp)
+                            }
+                            .onEnded { val in
+                                if let sp = ghostPitch {
+                                    // Move note to new pitch
+                                    moveChord(chord: chord, newPitch: sp)
+                                }
+                                draggingID = nil
+                                dragOffset = .zero
+                                ghostPitch = nil
+                            }
                     )
-                    .onTapGesture { scoreEngine.selectedChordID = chord.id }
+                    .onTapGesture {
+                        if case .delete = scoreEngine.editMode {
+                            scoreEngine.deleteContent(id: chord.id, partIndex: partIndex)
+                        } else {
+                            scoreEngine.selectedChordID = chord.id
+                        }
+                    }
 
                 case .rest(let rest):
                     SafeRestView(
                         symbol: restSymbol(rest.duration),
-                        xPos:   xFor(rest.beatPosition),
-                        yPos:   rowH / 2
+                        xPos: xFor(rest.beatPosition),
+                        yPos: rowH / 2
                     )
+                    .onTapGesture {
+                        if case .delete = scoreEngine.editMode {
+                            scoreEngine.deleteContent(id: rest.id, partIndex: partIndex)
+                        }
+                    }
                 }
             }
 
-            // Tap to add
-            SafeTapZone(
-                partIndex:    partIndex,
-                measureIndex: measureIndex,
-                clef:         clef,
-                lineSpacing:  lineSpacing,
-                rowH:         rowH,
-                xFor:         xFor,
-                yFor:         yFor
-            )
+            // Ghost pitch label while dragging
+            if let gp = ghostPitch, draggingID != nil {
+                Text(gp.displayName)
+                    .font(.system(size: 9, weight: .semibold, design: .monospaced))
+                    .foregroundColor(appState.theme.accent)
+                    .padding(4)
+                    .background(appState.theme.accent.opacity(0.15))
+                    .clipShape(RoundedRectangle(cornerRadius: 4))
+                    .position(x: width / 2, y: 16)
+            }
+
+            // Ghost note while hovering to place
+            if let gPos = ghostPos, draggingID == nil {
+                Circle()
+                    .fill(appState.theme.accent.opacity(0.4))
+                    .frame(width: lineSpacing * 1.2, height: lineSpacing * 0.85)
+                    .position(gPos)
+                if let gp = ghostPitch {
+                    Text(gp.displayName)
+                        .font(.system(size: 9))
+                        .foregroundColor(appState.theme.accent)
+                        .position(x: gPos.x, y: gPos.y - 14)
+                }
+            }
+
+            // Lasso selection box
+            if let rect = lassoRect {
+                Rectangle()
+                    .stroke(appState.theme.accent.opacity(0.7), lineWidth: 1)
+                    .background(appState.theme.accent.opacity(0.06))
+                    .frame(width: rect.width, height: rect.height)
+                    .position(x: rect.midX, y: rect.midY)
+            }
+
+            // Tap/drag gesture for placing notes or lasso
+            Color.clear.contentShape(Rectangle())
+                .gesture(
+                    DragGesture(minimumDistance: 0)
+                        .onChanged { val in
+                            if case .select = scoreEngine.editMode {
+                                // Lasso
+                                if lassoStart == nil { lassoStart = val.startLocation }
+                                lassoEnd = val.location
+                                updateLassoSelection()
+                            } else {
+                                ghostPos   = val.location
+                                let sp     = staffPosAt(y: val.location.y)
+                                ghostPitch = pitchAt(staffPos: sp)
+                            }
+                        }
+                        .onEnded { val in
+                            if case .select = scoreEngine.editMode {
+                                lassoStart = nil; lassoEnd = nil
+                            } else {
+                                handleTap(at: val.location)
+                                ghostPos   = nil
+                                ghostPitch = nil
+                            }
+                        }
+                )
         }
         .frame(width: width, height: rowH)
     }
 
-    func restSymbol(_ d: RestDuration) -> String {
-        switch d {
-        case .whole: return "𝄻"
-        case .half:  return "𝄼"
-        case .quarter: return "𝄽"
-        case .eighth:  return "𝄾"
-        case .sixteenth: return "𝄿"
-        }
-    }
-}
-
-// MARK: - Safe Chord View
-struct SafeChordView: View {
-    let chord:       Chord
-    let xPos:        CGFloat
-    let yFor:        (Int) -> CGFloat
-    let lineSpacing: CGFloat
-    let isSelected:  Bool
-
-    @Environment(AppState.self) private var appState
-
-    var headW: CGFloat { lineSpacing * 1.2 }
-    var headH: CGFloat { lineSpacing * 0.9 }
-
-    var body: some View {
-        ZStack {
-            ForEach(chord.notes) { note in
-                let yPos = yFor(note.pitch.staffPosition)
-
-                // Accidental
-                if note.accidental != .none {
-                    Text(accidentalSymbol(note.accidental))
-                        .font(.system(size: 11))
-                        .foregroundColor(.white.opacity(0.9))
-                        .position(x: xPos - headW - 2, y: yPos)
-                }
-
-                // Note head
-                Ellipse()
-                    .fill(chord.duration.isFilled
-                          ? (isSelected ? appState.theme.accent : Color.white)
-                          : Color.clear)
-                    .overlay(
-                        Ellipse().stroke(
-                            isSelected ? appState.theme.accent : Color.white,
-                            lineWidth: 1.2
-                        )
-                    )
-                    .frame(width: headW, height: headH)
-                    .rotationEffect(.degrees(-15))
-                    .position(x: xPos, y: yPos)
-            }
-
-            // Stem
-            if chord.duration != .whole, let first = chord.notes.first {
-                let stemY   = yFor(first.pitch.staffPosition)
-                let stemTop = stemY - 24
-                Path { p in
-                    p.move(to:    CGPoint(x: xPos + 4, y: stemY))
-                    p.addLine(to: CGPoint(x: xPos + 4, y: stemTop))
-                }
-                .stroke(isSelected ? appState.theme.accent : Color.white,
-                        lineWidth: 1.2)
-
-                // Tails for eighth/sixteenth
-                ForEach(0..<chord.duration.tailCount, id: \.self) { t in
-                    Path { p in
-                        let y0 = stemTop + CGFloat(t) * 5
-                        p.move(to: CGPoint(x: xPos + 4, y: y0))
-                        p.addCurve(
-                            to:       CGPoint(x: xPos + 14, y: y0 + 12),
-                            control1: CGPoint(x: xPos + 10, y: y0 + 2),
-                            control2: CGPoint(x: xPos + 16, y: y0 + 6)
-                        )
-                    }
-                    .stroke(isSelected ? appState.theme.accent : Color.white,
-                            lineWidth: 1.2)
-                }
-            }
-        }
-    }
-
-    func accidentalSymbol(_ a: Accidental) -> String {
-        switch a {
-        case .sharp:   return "♯"
-        case .flat:    return "♭"
-        case .natural: return "♮"
-        case .none:    return ""
-        }
-    }
-}
-
-// MARK: - Safe Rest View
-struct SafeRestView: View {
-    let symbol: String
-    let xPos:   CGFloat
-    let yPos:   CGFloat
-
-    var body: some View {
-        Text(symbol)
-            .font(.system(size: 18))
-            .foregroundColor(.white.opacity(0.75))
-            .position(x: xPos, y: yPos)
-    }
-}
-
-// MARK: - Safe Tap Zone
-struct SafeTapZone: View {
-    @Environment(ScoreEngine.self) private var scoreEngine
-    @Environment(AppState.self) private var appState
-
-    let partIndex:    Int
-    let measureIndex: Int
-    let clef:         Clef
-    let lineSpacing:  CGFloat
-    let rowH:         CGFloat
-    let xFor:         (Double) -> CGFloat
-    let yFor:         (Int) -> CGFloat
-
-    @State private var ghostPos: CGPoint? = nil
-
-    var body: some View {
-        GeometryReader { geo in
-            Color.clear
-                .contentShape(Rectangle())
-                .gesture(
-                    DragGesture(minimumDistance: 0)
-                        .onChanged { v in ghostPos = v.location }
-                        .onEnded   { v in
-                            handleTap(at: v.location, size: geo.size)
-                            ghostPos = nil
-                        }
-                )
-
-            if let pos = ghostPos {
-                let sp    = staffPosFor(y: pos.y)
-                let pitch = pitchFor(staffPos: sp)
-                Circle()
-                    .fill(appState.theme.accent.opacity(0.45))
-                    .frame(width: lineSpacing * 1.2, height: lineSpacing * 0.9)
-                    .position(pos)
-                Text(pitch.displayName)
-                    .font(.system(size: 9))
-                    .foregroundColor(appState.theme.accent)
-                    .position(x: pos.x, y: pos.y - 14)
-            }
-        }
-    }
-
-    func handleTap(at loc: CGPoint, size: CGSize) {
-        let sp    = staffPosFor(y: loc.y)
-        let pitch = pitchFor(staffPos: sp)
+    func handleTap(at loc: CGPoint) {
+        let sp    = staffPosAt(y: loc.y)
+        let pitch = pitchAt(staffPos: sp)
         switch scoreEngine.editMode {
         case .addNote:
             scoreEngine.inputNote(pitch: pitch, in: partIndex, measureIndex: measureIndex)
@@ -380,21 +462,133 @@ struct SafeTapZone: View {
         }
     }
 
-    func staffPosFor(y: CGFloat) -> Int {
-        let center   = rowH / 2
-        let halfStep = lineSpacing / 2
-        let offset   = (center - y) / halfStep
-        return Int(offset.rounded()) + clef.middleCOffset
+    func moveChord(chord: Chord, newPitch: Pitch) {
+        for mi in 0..<scoreEngine.document.parts[partIndex].measures.count {
+            for ci in 0..<scoreEngine.document.parts[partIndex].measures[mi].contents.count {
+                if case .chord(var c) = scoreEngine.document.parts[partIndex].measures[mi].contents[ci],
+                   c.id == chord.id {
+                    c.notes = c.notes.map { note in
+                        var n = note; n.pitch = newPitch; return n
+                    }
+                    scoreEngine.document.parts[partIndex].measures[mi].contents[ci] = .chord(c)
+                    return
+                }
+            }
+        }
     }
 
-    func pitchFor(staffPos: Int) -> Pitch {
-        let whites: [PitchClass] = [.C, .D, .E, .F, .G, .A, .B]
-        var oct = 4 + staffPos / 7
-        var idx = staffPos % 7
-        if idx < 0 { idx += 7; oct -= 1 }
-        return Pitch(
-            pitchClass: whites[max(0, min(6, idx))],
-            octave:     max(1, min(7, oct))
-        )
+    func updateLassoSelection() {
+        guard let rect = lassoRect else { return }
+        var selected = Set<UUID>()
+        for content in measure.contents {
+            if case .chord(let c) = content {
+                let x = xFor(c.beatPosition)
+                let y = yFor(c.notes.first?.pitch.staffPosition ?? 0)
+                if rect.contains(CGPoint(x: x, y: y)) {
+                    selected.insert(c.id)
+                }
+            }
+        }
+        lassoSelected = selected
+    }
+
+    func restSymbol(_ d: RestDuration) -> String {
+        switch d { case .whole: return "𝄻"; case .half: return "𝄼";
+                   case .quarter: return "𝄽"; case .eighth: return "𝄾"; case .sixteenth: return "𝄿" }
+    }
+    func accidentalText(_ a: Accidental) -> String {
+        switch a { case .sharp: return "♯"; case .flat: return "♭"; case .natural: return "♮"; case .none: return "" }
+    }
+}
+
+// MARK: - Note Head (Canvas-based)
+struct NoteHeadCanvas: View {
+    let duration:    NoteDuration
+    let xPos:        CGFloat
+    let yPos:        CGFloat
+    let lineSpacing: CGFloat
+    let isSelected:  Bool
+    let accent:      Color
+
+    var hw: CGFloat { lineSpacing * 1.15 }
+    var hh: CGFloat { lineSpacing * 0.82 }
+    var fill: Color { isSelected ? accent : .white }
+
+    var body: some View {
+        Ellipse()
+            .fill(duration.isFilled ? fill : .clear)
+            .overlay(Ellipse().stroke(fill, lineWidth: 1.2))
+            .frame(width: hw, height: hh)
+            .rotationEffect(.degrees(-12))
+            .position(x: xPos, y: yPos)
+    }
+}
+
+// MARK: - Stem View
+struct StemView: View {
+    let xPos:       CGFloat
+    let headY:      CGFloat
+    let tailCount:  Int
+    let isSelected: Bool
+    let accent:     Color
+
+    var stemColor: Color { isSelected ? accent : .white }
+
+    var body: some View {
+        let stemTop = headY - 28
+        ZStack {
+            Path { p in
+                p.move(to: CGPoint(x: xPos + 5, y: headY - 4))
+                p.addLine(to: CGPoint(x: xPos + 5, y: stemTop))
+            }
+            .stroke(stemColor, lineWidth: 1.2)
+
+            ForEach(0..<tailCount, id: \.self) { t in
+                Path { p in
+                    let y0 = stemTop + CGFloat(t) * 6
+                    p.move(to: CGPoint(x: xPos + 5, y: y0))
+                    p.addCurve(
+                        to:       CGPoint(x: xPos + 16, y: y0 + 13),
+                        control1: CGPoint(x: xPos + 12, y: y0 + 2),
+                        control2: CGPoint(x: xPos + 17, y: y0 + 7)
+                    )
+                }
+                .stroke(stemColor, style: StrokeStyle(lineWidth: 1.2, lineCap: .round))
+            }
+        }
+    }
+}
+
+// MARK: - Safe Rest View
+struct SafeRestView: View {
+    let symbol: String
+    let xPos:   CGFloat
+    let yPos:   CGFloat
+    var body: some View {
+        Text(symbol).font(.system(size: 18)).foregroundColor(.white.opacity(0.75))
+            .position(x: xPos, y: yPos)
+    }
+}
+
+// MARK: - Clef View
+struct SafeClefView: View {
+    let clef:        Clef
+    let lineSpacing: CGFloat
+    var staffH: CGFloat { lineSpacing * 4 }
+    var body: some View {
+        Canvas { ctx, size in
+            let top = (size.height - staffH) / 2
+            for i in 0...4 {
+                let y = top + CGFloat(i) * lineSpacing
+                var p = Path(); p.move(to: CGPoint(x: 4, y: y)); p.addLine(to: CGPoint(x: size.width, y: y))
+                ctx.stroke(p, with: .color(.white.opacity(0.65)), lineWidth: 0.7)
+            }
+            let sym = clef == .treble ? "𝄞" : "𝄢"
+            let sz: CGFloat = clef == .treble ? 36 : 26
+            ctx.draw(
+                Text(sym).font(.system(size: sz)).foregroundColor(.white),
+                at: CGPoint(x: size.width/2, y: size.height/2), anchor: .center
+            )
+        }
     }
 }

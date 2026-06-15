@@ -53,7 +53,7 @@ struct MainComposerView: View {
                 }
 
                 // ── Score canvas ──────────────────────────────────
-                SafeScoreCanvas()
+                ScoreEditorView()
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
 
                 // ── Playback bar ──────────────────────────────────
@@ -72,11 +72,29 @@ struct MainComposerView: View {
             }
         }
         .animation(.spring(response: 0.38, dampingFraction: 0.82), value: appState.isPianoDrawerOpen)
-        // Sheets
-        .sheet(isPresented: $showProjectBrowser) { ProjectBrowserView(isPresented: $showProjectBrowser) }
-        .sheet(isPresented: $showExportSheet)    { ExportSheet() }
-        .sheet(isPresented: $showLayoutPicker)   { LayoutPickerSheet() }
-        .sheet(isPresented: $showTempoSheet)     { TempoSheet() }
+        // Sheets — must pass @Observable environments explicitly
+        .sheet(isPresented: $showProjectBrowser) {
+            ProjectBrowserView(isPresented: $showProjectBrowser)
+                .environment(AppState.shared)
+                .environment(ScoreEngine.shared)
+                .environment(AuthManager.shared)
+        }
+        .sheet(isPresented: $showExportSheet) {
+            ExportSheet()
+                .environment(AppState.shared)
+                .environment(ScoreEngine.shared)
+                .environment(AudioEngine.shared)
+        }
+        .sheet(isPresented: $showLayoutPicker) {
+            LayoutPickerSheet()
+                .environment(AppState.shared)
+                .environment(ScoreEngine.shared)
+        }
+        .sheet(isPresented: $showTempoSheet) {
+            TempoSheet()
+                .environment(AppState.shared)
+                .environment(ScoreEngine.shared)
+        }
         // Main menu overlay
         .overlay {
             if showMainMenu {

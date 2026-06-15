@@ -9,6 +9,7 @@ struct ExportSheet: View {
     @State private var formatIndex: Int = 0
     @State private var statusMessage: String = ""
     @State private var pdfLandscape: Bool = true
+    @State private var isExporting: Bool = false
     @State private var exportURL: URL? = nil
     @State private var showShareSheet = false
 
@@ -36,25 +37,34 @@ struct ExportSheet: View {
                     .clipShape(RoundedRectangle(cornerRadius: 14))
 
                     // Export audio button
-                    Button {
-                        statusMessage = "Audio export: coming in next build"
-                    } label: {
-                        Label("Export Audio (\(formats[formatIndex]))", systemImage: "music.quarternote.3")
-                            .font(.system(size: 14, weight: .semibold))
-                            .foregroundColor(.white)
-                            .frame(maxWidth: .infinity).frame(height: 48)
-                            .background(appState.theme.accent.opacity(0.2))
-                            .overlay(RoundedRectangle(cornerRadius: 12).stroke(appState.theme.accent.opacity(0.5), lineWidth: 1))
-                            .clipShape(RoundedRectangle(cornerRadius: 12))
+                    if isExporting {
+                        HStack {
+                            ProgressView().tint(appState.theme.accent)
+                            Text("Rendering \(formats[formatIndex])…")
+                                .font(.system(size: 13)).foregroundColor(.white.opacity(0.6))
+                        }
+                        .frame(maxWidth: .infinity).frame(height: 48)
+                    } else {
+                        Button { exportAudio() } label: {
+                            Label("Export Audio (\(formats[formatIndex]))", systemImage: "music.quarternote.3")
+                                .font(.system(size: 14, weight: .semibold))
+                                .foregroundColor(.white)
+                                .frame(maxWidth: .infinity).frame(height: 48)
+                                .background(appState.theme.accent.opacity(0.2))
+                                .overlay(RoundedRectangle(cornerRadius: 12).stroke(appState.theme.accent.opacity(0.5), lineWidth: 1))
+                                .clipShape(RoundedRectangle(cornerRadius: 12))
+                        }
                     }
 
                     // MIDI export
                     Button {
+                        let midiData = AWAudioPlayer.shared.buildMIDI(from: scoreEngine.document)
                         let tmp = FileManager.default.temporaryDirectory
-                            .appendingPathComponent("\(scoreEngine.document.title).mid")
-                        try? Data().write(to: tmp)
+                            .appendingPathComponent(scoreEngine.document.title + ".mid")
+                        try? midiData.write(to: tmp)
                         exportURL = tmp
                         showShareSheet = true
+                        statusMessage = "MIDI ready"
                     } label: {
                         Label("Export MIDI", systemImage: "pianokeys")
                             .font(.system(size: 14, weight: .semibold))
@@ -130,7 +140,44 @@ struct ExportSheet: View {
         }
     }
 
-    func exportPDF() {
+    func exportAudio() {
+        isExporting = true
+        let format = formats[formatIndex]
+        if format == "MIDI" {
+            let midiData = AWAudioPlayer.shared.buildMIDI(from: scoreEngine.document)
+            let url = FileManager.default.temporaryDirectory
+                .appendingPathComponent(scoreEngine.document.title + ".mid")
+            try? midiData.write(to: url)
+            exportURL = url
+            showShareSheet = true
+            isExporting = false
+            statusMessage = "MIDI exported"
+            return
+        }
+        AWAudioPlayer.shared.exportWAV(document: scoreEngine.document) { wavURL in
+            guard let wavURL else {
+                self.isExporting = false
+                self.statusMessage = "Export failed"
+                return
+            }
+            if format == "WAV" {
+                self.exportURL = wavURL
+                self.showShareSheet = true
+                self.isExporting = false
+                self.statusMessage = "WAV exported"
+            } else {
+                // Convert to M4A (AAC) for MP3/M4A
+                AWAudioPlayer.shared.exportM4A(wavURL: wavURL) { m4aURL in
+                    self.exportURL = m4aURL ?? wavURL
+                    self.showShareSheet = true
+                    self.isExporting = false
+                    self.statusMessage = format + " exported"
+                }
+            }
+        }
+    }
+
+        func exportPDF() {
         let doc = scoreEngine.document
         let pageSize = pdfLandscape
             ? CGRect(x: 0, y: 0, width: 1122, height: 794)   // A4 landscape 96dpi

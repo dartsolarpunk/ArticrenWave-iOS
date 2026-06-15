@@ -195,6 +195,33 @@ class ScoreEngine {
         validationError = nil
     }
 
+    func deleteContent(id: UUID, partIndex: Int) {
+        guard partIndex < document.parts.count else { return }
+        for mi in 0..<document.parts[partIndex].measures.count {
+            document.parts[partIndex].measures[mi].contents.removeAll { content in
+                switch content {
+                case .chord(let c): return c.id == id
+                case .rest(let r):  return r.id == id
+                }
+            }
+        }
+        if selectedChordID == id { selectedChordID = nil }
+    }
+
+    func moveNote(chordID: UUID, to newPitch: Pitch) {
+        for pi in 0..<document.parts.count {
+            for mi in 0..<document.parts[pi].measures.count {
+                for ci in 0..<document.parts[pi].measures[mi].contents.count {
+                    if case .chord(var c) = document.parts[pi].measures[mi].contents[ci], c.id == chordID {
+                        c.notes = c.notes.map { var n = $0; n.pitch = newPitch; return n }
+                        document.parts[pi].measures[mi].contents[ci] = .chord(c)
+                        return
+                    }
+                }
+            }
+        }
+    }
+
     func addPart(instrument: InstrumentFamily) {
         let count = document.parts.first?.measures.count ?? 1
         var part = Part(instrument: instrument, clef: instrument.clef, measures: [])
