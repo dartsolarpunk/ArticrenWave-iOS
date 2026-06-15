@@ -47,7 +47,7 @@ struct ExportSheet: View {
                         }
                     } else {
                         ActionButton(label: "Export Audio", icon: "music.quarternote.3", color: appState.theme.accent) {
-                            audioEngine.renderScoreToAudio(
+                            // audioEngine.renderScoreToAudio(
                                 document: scoreEngine.document,
                                 format: selectedFormat
                             ) { url in

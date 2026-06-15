@@ -97,7 +97,7 @@ class AuthManager {
 // MARK: - AudioEngine
 @Observable
 class AudioEngine {
-    var currentInstrumentName: String = AudioInstrument.grandPiano.rawValue
+    var currentInstrumentName: String = "Grand Piano"
 
 
     static let shared = AudioEngine()
