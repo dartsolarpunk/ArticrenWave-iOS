@@ -20,6 +20,14 @@ jobs:
           sudo xcode-select -switch /Applications/Xcode_26.3.app
           xcodebuild -version
 
+      - name: Install xcodegen
+        run: |
+          brew install xcodegen 2>/dev/null || brew upgrade xcodegen 2>/dev/null || true
+          xcodegen version
+
+      - name: Generate Xcode project
+        run: xcodegen generate --spec project.yml
+
       - name: Install App Store Connect API key
         env:
           ASC_KEY: ${{ secrets.APP_STORE_CONNECT_API_KEY_CONTENT }}
@@ -55,78 +63,39 @@ jobs:
           PP_UUID=$(security cms -D -i "$PP_PATH" 2>/dev/null | \
             plutil -extract UUID raw - 2>/dev/null || echo "b12f6031-5b23-4c52-8fbb-5185c60e83b9")
           cp "$PP_PATH" ~/Library/MobileDevice/Provisioning\ Profiles/"$PP_UUID.mobileprovision"
-          echo "PROFILE_UUID=$PP_UUID" >> $GITHUB_ENV
           echo "KEYCHAIN_PATH=$KEYCHAIN_PATH" >> $GITHUB_ENV
 
       - name: Archive
         run: |
-          PP_FINAL="${PROFILE_UUID:-b12f6031-5b23-4c52-8fbb-5185c60e83b9}"
           xcodebuild archive \
             -project ArticrenWave.xcodeproj \
             -scheme ArticrenWave \
             -configuration Release \
             -destination "generic/platform=iOS" \
             -archivePath "$RUNNER_TEMP/ArticrenWave.xcarchive" \
-            CODE_SIGN_STYLE=Manual \
-            CODE_SIGN_IDENTITY="iPhone Distribution" \
-            PROVISIONING_PROFILE="$PP_FINAL" \
-            DEVELOPMENT_TEAM=L7AHWS9Q6V \
             OTHER_CODE_SIGN_FLAGS="--keychain $RUNNER_TEMP/signing.keychain-db" \
-            PRODUCT_BUNDLE_IDENTIFIER=ArticrenWave \
             CURRENT_PROJECT_VERSION=${{ github.run_number }} \
             MARKETING_VERSION=1.0
+          APP=$(find "$RUNNER_TEMP/ArticrenWave.xcarchive/Products/Applications" -name "*.app" | head -1)
+          echo "Archived: $APP"
+          echo "CFBundleVersion: $(plutil -extract CFBundleVersion raw "$APP/Info.plist")"
 
-      - name: Export, patch build number, re-sign, upload
+      - name: Package and upload IPA
         run: |
           BUILD_NUM=${{ github.run_number }}
+          ARCHIVE="$RUNNER_TEMP/ArticrenWave.xcarchive"
+          APP=$(find "$ARCHIVE/Products/Applications" -name "*.app" | head -1)
 
-          # Export IPA
-          xcodebuild -exportArchive \
-            -archivePath "$RUNNER_TEMP/ArticrenWave.xcarchive" \
-            -exportPath "$RUNNER_TEMP/export" \
-            -exportOptionsPlist ExportOptions.plist \
-            -allowProvisioningUpdates || true
+          mkdir -p "$RUNNER_TEMP/Payload"
+          cp -r "$APP" "$RUNNER_TEMP/Payload/"
+          cd "$RUNNER_TEMP"
+          zip -qr "ArticrenWave.ipa" Payload/
+          ls -lh "$RUNNER_TEMP/ArticrenWave.ipa"
 
-          IPA="$RUNNER_TEMP/export/ArticrenWave.ipa"
-          if [ ! -f "$IPA" ]; then
-            ARCHIVE="$RUNNER_TEMP/ArticrenWave.xcarchive"
-            APP_SRC=$(find "$ARCHIVE/Products/Applications" -name "*.app" | head -1)
-            mkdir -p "$RUNNER_TEMP/Payload"
-            cp -r "$APP_SRC" "$RUNNER_TEMP/Payload/"
-            mkdir -p "$RUNNER_TEMP/export"
-            cd "$RUNNER_TEMP" && zip -qr "export/ArticrenWave.ipa" Payload/
-          fi
-
-          # Unzip IPA, patch build number, re-sign with project entitlements, rezip
-          mkdir -p "$RUNNER_TEMP/ipa_work"
-          cd "$RUNNER_TEMP/ipa_work"
-          unzip -q "$IPA"
-          APP=$(find . -name "*.app" | head -1)
-
-          echo "CFBundleVersion before: $(plutil -extract CFBundleVersion raw "$APP/Info.plist")"
-          /usr/libexec/PlistBuddy -c "Set :CFBundleVersion $BUILD_NUM" "$APP/Info.plist"
-          echo "CFBundleVersion after:  $(plutil -extract CFBundleVersion raw "$APP/Info.plist")"
-
-          # Replace embedded.mobileprovision
-          cp "$RUNNER_TEMP/articrenwave.mobileprovision" "$APP/embedded.mobileprovision"
-
-          # Re-sign with ONLY Sign In with Apple entitlements (no iCloud dev keys)
-          /usr/bin/codesign --force \
-            --sign "iPhone Distribution: DART Meadow LLC (L7AHWS9Q6V)" \
-            --entitlements "$GITHUB_WORKSPACE/ArticrenWave/ArticrenWave.entitlements" \
-            --keychain "$KEYCHAIN_PATH" \
-            "$APP"
-
-          # Repackage
-          rm -f "$IPA"
-          zip -qr "$IPA" Payload/
-          echo "Repacked IPA: $(ls -lh "$IPA" | awk '{print $5}')"
-
-          # Upload
           echo "Uploading build $BUILD_NUM..."
           RESULT=$(xcrun altool --upload-app \
             --type ios \
-            --file "$IPA" \
+            --file "$RUNNER_TEMP/ArticrenWave.ipa" \
             --apiKey "NQXQ595W59" \
             --apiIssuer "90056871-d791-45f6-a770-21399c45e491" \
             --apiKeyPath ~/.appstoreconnect/private_keys/AuthKey_NQXQ595W59.p8 2>&1)
@@ -134,7 +103,7 @@ jobs:
           if echo "$RESULT" | grep -iE "UPLOAD FAILED|Failed to upload"; then
             echo "❌ Upload failed"; exit 1
           fi
-          echo "✅ Build $BUILD_NUM uploaded to TestFlight"
+          echo "✅ Build $BUILD_NUM uploaded"
 
       - name: Clean keychain
         if: always()
