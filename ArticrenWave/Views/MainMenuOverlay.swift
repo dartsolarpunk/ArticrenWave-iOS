@@ -56,12 +56,12 @@ struct MainMenuOverlay: View {
                                             .clipShape(Circle())
                                     } else {
                                         Circle()
-                                            .fill(appStateAccent.opacity(0.2))
+                                            .fill(appState.themeAccent.opacity(0.2))
                                             .frame(width: 52, height: 52)
                                             .overlay(
                                                 Text(authManager.userFullName.prefix(1))
                                                     .font(.system(size: 22, weight: .semibold))
-                                                    .foregroundColor(appStateAccent)
+                                                    .foregroundColor(appState.themeAccent)
                                             )
                                     }
                                     PhotosPicker(selection: $avatarItem, matching: .images) {
@@ -80,7 +80,7 @@ struct MainMenuOverlay: View {
                                     if authManager.isGuest {
                                         Text("GUEST MODE")
                                             .font(.system(size: 8, weight: .bold, design: .monospaced))
-                                            .foregroundColor(appStateSecondary.opacity(0.8))
+                                            .foregroundColor(appState.themeSecondary.opacity(0.8))
                                             .kerning(1)
                                     }
                                     if !authManager.userEmail.isEmpty {
@@ -90,7 +90,7 @@ struct MainMenuOverlay: View {
                                     }
                                     Text("Storage: \(authManager.storagePreference.rawValue)")
                                         .font(.system(size: 10))
-                                        .foregroundColor(appStateAccent.opacity(0.7))
+                                        .foregroundColor(appState.themeAccent.opacity(0.7))
                                 }
                                 Spacer()
                             }
@@ -198,7 +198,7 @@ struct MainMenuOverlay: View {
                                 .foregroundColor(.white.opacity(0.35))
                             Text("Powered by LEATR Neural Architecture")
                                 .font(.system(size: 10, weight: .medium))
-                                .foregroundColor(appStateAccent.opacity(0.6))
+                                .foregroundColor(appState.themeAccent.opacity(0.6))
                         }
                         .padding(.horizontal, 16)
                         .padding(.vertical, 10)
@@ -254,7 +254,7 @@ struct MenuSection<Content: View>: View {
                 HStack {
                     Text(title)
                         .font(.system(size: 10, weight: .semibold))
-                        .foregroundColor(appStateAccent.opacity(0.6))
+                        .foregroundColor(appState.themeAccent.opacity(0.6))
                         .tracking(1.5)
                     Spacer()
                     Image(systemName: isExpanded ? "chevron.up" : "chevron.down")
@@ -283,7 +283,7 @@ struct MenuActionRow: View {
             HStack(spacing: 12) {
                 Image(systemName: icon)
                     .font(.system(size: 14))
-                    .foregroundColor(appStateAccent.opacity(0.8))
+                    .foregroundColor(appState.themeAccent.opacity(0.8))
                     .frame(width: 20)
                 Text(label)
                     .font(.system(size: 13))

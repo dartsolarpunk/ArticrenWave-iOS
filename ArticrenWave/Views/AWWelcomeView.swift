@@ -26,7 +26,7 @@ struct AWWelcomeView: View {
                 // Logo orb
                 ZStack {
                     Circle()
-                        .stroke(appStateAccent.opacity(0.07), lineWidth: 1)
+                        .stroke(appState.themeAccent.opacity(0.07), lineWidth: 1)
                         .frame(width: ringPulse ? 210 : 178, height: ringPulse ? 210 : 178)
                         .animation(.easeInOut(duration: 2.5).repeatForever(autoreverses: true),
                                    value: ringPulse)
@@ -36,8 +36,8 @@ struct AWWelcomeView: View {
                     Circle()
                         .stroke(
                             LinearGradient(
-                                colors: [appStateAccent.opacity(0.5),
-                                         appStateSecondary.opacity(0.3)],
+                                colors: [appState.themeAccent.opacity(0.5),
+                                         appState.themeSecondary.opacity(0.3)],
                                 startPoint: .topLeading, endPoint: .bottomTrailing
                             ),
                             lineWidth: 1.5
@@ -61,7 +61,7 @@ struct AWWelcomeView: View {
                         .kerning(5)
                     Text("AR Classical Score Writing")
                         .font(.system(size: 11, weight: .medium, design: .monospaced))
-                        .foregroundColor(appStateAccent.opacity(0.7))
+                        .foregroundColor(appState.themeAccent.opacity(0.7))
                         .kerning(2)
                     Text("DART Meadow · Radical Deepscale")
                         .font(.system(size: 9, design: .monospaced))
@@ -237,13 +237,13 @@ struct AWStorageChip: View {
                     Image(systemName: "checkmark").font(.system(size: 10, weight: .bold))
                 }
             }
-            .foregroundColor(isSelected ? appStateAccent : .white.opacity(isDisabled ? 0.2 : 0.55))
+            .foregroundColor(isSelected ? appState.themeAccent : .white.opacity(isDisabled ? 0.2 : 0.55))
             .frame(maxWidth: .infinity).padding(.vertical, 10)
             .background(
                 RoundedRectangle(cornerRadius: 10)
-                    .fill(isSelected ? appStateAccent.opacity(0.12) : Color.white.opacity(0.05))
+                    .fill(isSelected ? appState.themeAccent.opacity(0.12) : Color.white.opacity(0.05))
                     .overlay(RoundedRectangle(cornerRadius: 10)
-                        .stroke(isSelected ? appStateAccent.opacity(0.5) : Color.clear, lineWidth: 1))
+                        .stroke(isSelected ? appState.themeAccent.opacity(0.5) : Color.clear, lineWidth: 1))
             )
         }
         .disabled(isDisabled)

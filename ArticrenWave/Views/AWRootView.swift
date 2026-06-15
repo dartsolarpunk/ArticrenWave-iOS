@@ -40,12 +40,12 @@ struct AWMainShell: View {
 
     var body: some View {
         ZStack {
-            appStateBackground.ignoresSafeArea()
+            appState.themeBackground.ignoresSafeArea()
             if loaded {
                 MainComposerView()
             } else {
                 VStack(spacing: 16) {
-                    ProgressView().tint(appStateAccent).scaleEffect(1.2)
+                    ProgressView().tint(appState.themeAccent).scaleEffect(1.2)
                     Text("Loading workspace…")
                         .font(.system(size: 12, design: .monospaced))
                         .foregroundColor(.white.opacity(0.4))

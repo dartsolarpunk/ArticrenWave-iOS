@@ -37,14 +37,14 @@ struct AWSSplashView: View {
                 ZStack {
                     // Outer pulse ring
                     Circle()
-                        .stroke(appStateAccent.opacity(0.07), lineWidth: 1)
+                        .stroke(appState.themeAccent.opacity(0.07), lineWidth: 1)
                         .frame(width: ringPulse ? 240 : 200, height: ringPulse ? 240 : 200)
                         .animation(.easeInOut(duration: 2.6).repeatForever(autoreverses: true),
                                    value: ringPulse)
 
                     // Mid ring
                     Circle()
-                        .stroke(appStateAccent.opacity(0.18), lineWidth: 1.2)
+                        .stroke(appState.themeAccent.opacity(0.18), lineWidth: 1.2)
                         .frame(width: 168, height: 168)
 
                     // Logo fill
@@ -62,8 +62,8 @@ struct AWSSplashView: View {
                             Circle()
                                 .stroke(
                                     LinearGradient(
-                                        colors: [appStateAccent.opacity(0.6),
-                                                 appStateSecondary.opacity(0.4)],
+                                        colors: [appState.themeAccent.opacity(0.6),
+                                                 appState.themeSecondary.opacity(0.4)],
                                         startPoint: .topLeading, endPoint: .bottomTrailing
                                     ),
                                     lineWidth: 1.5
@@ -92,7 +92,7 @@ struct AWSSplashView: View {
 
                     Text("AR CLASSICAL SCORE WRITING")
                         .font(.system(size: 10, weight: .semibold, design: .monospaced))
-                        .foregroundColor(appStateAccent.opacity(0.75))
+                        .foregroundColor(appState.themeAccent.opacity(0.75))
                         .kerning(2.5)
                         .opacity(tagOpacity)
 
@@ -108,7 +108,7 @@ struct AWSSplashView: View {
                 // Boot line
                 Text(bootText)
                     .font(.system(size: 10, design: .monospaced))
-                    .foregroundColor(appStateAccent.opacity(0.35))
+                    .foregroundColor(appState.themeAccent.opacity(0.35))
                     .opacity(tagOpacity)
                     .padding(.bottom, 54)
                     .animation(.easeInOut(duration: 0.3), value: bootText)

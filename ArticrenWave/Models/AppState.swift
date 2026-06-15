@@ -13,6 +13,11 @@ class AppState {
     static let shared = AppState()
 }
 
+enum StoragePreference: String {
+    case device = "Device"
+    case iCloud = "iCloud"
+}
+
 @Observable
 class AuthManager {
     var isSignedIn: Bool = false
@@ -49,7 +54,7 @@ class AuthManager {
 @Observable
 class ScoreEngine {
     var document: ScoreDocument = ScoreDocument.defaultDocument()
-    var editMode: ScoreEditMode = .select
+    var editModeRaw: String = "select"  // "select", "addNote", "addRest", etc.
     var selectedChordID: UUID? = nil
     var validationError: String? = nil
     var isRecording: Bool = false
@@ -116,7 +121,7 @@ class ScoreEngine {
 
 @Observable
 class AudioEngine {
-    var currentInstrument: AudioInstrument = .grandPiano
+    var currentInstrumentName: String = "Grand Piano"
 
     static let shared = AudioEngine()
 
@@ -127,8 +132,8 @@ class AudioEngine {
         }
     }
 
-    func loadInstrument(_ instr: AudioInstrument) {
-        currentInstrument = instr
+    func loadInstrument(named name: String) {
+        currentInstrumentName = name
     }
 }
 

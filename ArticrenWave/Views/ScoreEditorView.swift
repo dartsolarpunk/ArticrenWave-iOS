@@ -16,18 +16,18 @@ struct ScoreEditorView: View {
             if let err = scoreEngine.validationError {
                 Text(err)
                     .font(.system(size: 11, design: .monospaced))
-                    .foregroundColor(appStateAccent)
+                    .foregroundColor(appState.themeAccent)
                     .padding(.horizontal, 12)
                     .padding(.vertical, 4)
                     .frame(maxWidth: .infinity, alignment: .leading)
-                    .background(appStateAccent.opacity(0.1))
+                    .background(appState.themeAccent.opacity(0.1))
                     .onTapGesture { scoreEngine.validationError = nil }
             }
 
             ScrollView([.horizontal, .vertical], showsIndicators: true) {
                 SafeScoreCanvas()
             }
-            .background(appStateBackground)
+            .background(appState.themeBackground)
         }
     }
 }
@@ -259,11 +259,11 @@ struct SafeChordView: View {
                 // Note head
                 Ellipse()
                     .fill(chord.duration.isFilled
-                          ? (isSelected ? appStateAccent : Color.white)
+                          ? (isSelected ? appState.themeAccent : Color.white)
                           : Color.clear)
                     .overlay(
                         Ellipse().stroke(
-                            isSelected ? appStateAccent : Color.white,
+                            isSelected ? appState.themeAccent : Color.white,
                             lineWidth: 1.2
                         )
                     )
@@ -280,7 +280,7 @@ struct SafeChordView: View {
                     p.move(to:    CGPoint(x: xPos + 4, y: stemY))
                     p.addLine(to: CGPoint(x: xPos + 4, y: stemTop))
                 }
-                .stroke(isSelected ? appStateAccent : Color.white,
+                .stroke(isSelected ? appState.themeAccent : Color.white,
                         lineWidth: 1.2)
 
                 // Tails for eighth/sixteenth
@@ -294,7 +294,7 @@ struct SafeChordView: View {
                             control2: CGPoint(x: xPos + 16, y: y0 + 6)
                         )
                     }
-                    .stroke(isSelected ? appStateAccent : Color.white,
+                    .stroke(isSelected ? appState.themeAccent : Color.white,
                             lineWidth: 1.2)
                 }
             }
@@ -357,12 +357,12 @@ struct SafeTapZone: View {
                 let sp    = staffPosFor(y: pos.y)
                 let pitch = pitchFor(staffPos: sp)
                 Circle()
-                    .fill(appStateAccent.opacity(0.45))
+                    .fill(appState.themeAccent.opacity(0.45))
                     .frame(width: lineSpacing * 1.2, height: lineSpacing * 0.9)
                     .position(pos)
                 Text(pitch.displayName)
                     .font(.system(size: 9))
-                    .foregroundColor(appStateAccent)
+                    .foregroundColor(appState.themeAccent)
                     .position(x: pos.x, y: pos.y - 14)
             }
         }
