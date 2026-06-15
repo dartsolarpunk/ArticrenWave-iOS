@@ -53,8 +53,15 @@ struct ScoreCanvas: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: partSpacing) {
-            ForEach(Array(scoreEngine.document.parts.enumerated()), id: \.element.id) { pi, part in
-                StaffRow(partIndex: pi, part: part)
+            if scoreEngine.document.parts.isEmpty {
+                Text("No parts — tap Layout to add a staff")
+                    .font(.system(size: 13, design: .monospaced))
+                    .foregroundColor(.white.opacity(0.3))
+                    .padding(40)
+            } else {
+                ForEach(Array(scoreEngine.document.parts.enumerated()), id: \.element.id) { pi, part in
+                    StaffRow(partIndex: pi, part: part)
+                }
             }
         }
         .padding(24)

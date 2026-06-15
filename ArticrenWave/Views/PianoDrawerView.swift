@@ -128,9 +128,6 @@ struct PianoScrollView: View {
         return keys
     }()
 
-    var scrollProxy: ScrollViewProxy? = nil
-    @State private var scrollProxy2: ScrollViewProxy? = nil
-
     var body: some View {
         ScrollViewReader { proxy in
             ScrollView(.horizontal, showsIndicators: false) {
@@ -176,10 +173,6 @@ struct PianoScrollView: View {
     }
 
     func isPlayable(pitch: Pitch) -> Bool {
-        let instr = AudioInstrument.allCases.first {
-            $0.rawValue == audioEngine.currentInstrument.rawValue
-        } ?? .grandPiano
-
         // Map AudioInstrument to InstrumentFamily for range check
         let range = audioEngine.currentInstrument.playableOctaveRange
         return range.contains(pitch.octave)
