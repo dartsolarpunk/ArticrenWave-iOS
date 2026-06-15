@@ -19,7 +19,6 @@
 		A019 /* ScoreEditorView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A020 /* ScoreEditorView.swift */; };
 		A021 /* NotePalette.swift in Sources */ = {isa = PBXBuildFile; fileRef = A022 /* NotePalette.swift */; };
 		A023 /* PianoDrawerView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A024 /* PianoDrawerView.swift */; };
-		A025 /* OnboardingView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A026 /* OnboardingView.swift */; };
 		A027 /* MainMenuOverlay.swift in Sources */ = {isa = PBXBuildFile; fileRef = A028 /* MainMenuOverlay.swift */; };
 		A029 /* SheetsViews.swift in Sources */ = {isa = PBXBuildFile; fileRef = A030 /* SheetsViews.swift */; };
 		A031 /* Extensions.swift in Sources */ = {isa = PBXBuildFile; fileRef = A032 /* Extensions.swift */; };
@@ -42,7 +41,6 @@
 		A020 /* ScoreEditorView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Views/ScoreEditorView.swift; sourceTree = "<group>"; };
 		A022 /* NotePalette.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Views/NotePalette.swift; sourceTree = "<group>"; };
 		A024 /* PianoDrawerView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Views/PianoDrawerView.swift; sourceTree = "<group>"; };
-		A026 /* OnboardingView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Views/OnboardingView.swift; sourceTree = "<group>"; };
 		A028 /* MainMenuOverlay.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Views/MainMenuOverlay.swift; sourceTree = "<group>"; };
 		A030 /* SheetsViews.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Views/SheetsViews.swift; sourceTree = "<group>"; };
 		A032 /* Extensions.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Extensions/Extensions.swift; sourceTree = "<group>"; };
@@ -87,8 +85,7 @@
 				A020,
 				A022,
 				A024,
-				A026,
-				A028,
+					A028,
 				A030,
 				A032,
 				A034,

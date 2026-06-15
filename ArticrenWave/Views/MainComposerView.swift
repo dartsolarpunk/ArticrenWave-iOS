@@ -144,10 +144,24 @@ struct ComposerToolbar: View {
         .frame(height: 50)
         .background(appState.theme.background.opacity(0.97))
         .overlay(Rectangle().fill(Color.white.opacity(0.06)).frame(height: 1), alignment: .bottom)
-        // Sheets
-        .sheet(isPresented: $showExportSheet) { ExportSheet() }
-        .sheet(isPresented: $showLayoutPicker) { LayoutPickerSheet() }
-        .sheet(isPresented: $showTempoSheet) { TempoSheet() }
+        // Sheets — must pass environmentObjects explicitly through sheet presentation
+        .sheet(isPresented: $showExportSheet) {
+            ExportSheet()
+                .environmentObject(appState)
+                .environmentObject(scoreEngine)
+                .environmentObject(audioEngine)
+                .environmentObject(projectManager)
+        }
+        .sheet(isPresented: $showLayoutPicker) {
+            LayoutPickerSheet()
+                .environmentObject(appState)
+                .environmentObject(scoreEngine)
+        }
+        .sheet(isPresented: $showTempoSheet) {
+            TempoSheet()
+                .environmentObject(appState)
+                .environmentObject(scoreEngine)
+        }
     }
 }
 
