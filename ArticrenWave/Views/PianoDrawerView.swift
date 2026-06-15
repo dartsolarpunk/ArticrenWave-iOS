@@ -226,7 +226,9 @@ struct AWWhiteKey: View {
                 .onChanged { _ in
                     if !pressed {
                         pressed = true
-                        let pitch = Pitch(pitchClass: key.pitchClass, octave: key.octave)
+                        // Piano octave 1=high(right), 7=low(left). Map to MIDI: midiOct = 8 - pianoOct
+                        let midiOct = max(1, min(7, 8 - key.octave))
+                        let pitch = Pitch(pitchClass: key.pitchClass, octave: midiOct)
                         audioEngine.playPitch(pitch, duration: 0.5)
                     }
                 }

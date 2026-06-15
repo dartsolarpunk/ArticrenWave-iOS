@@ -9,7 +9,6 @@ struct ArticrenWaveApp: App {
     private let scoreEngine   = ScoreEngine.shared
     private let audioEngine   = AudioEngine.shared
     private let projectManager  = ProjectManager.shared
-    private let playback        = PlaybackEngine.shared
 
     var body: some Scene {
         WindowGroup {
@@ -19,7 +18,6 @@ struct ArticrenWaveApp: App {
                 .environment(scoreEngine)
                 .environment(audioEngine)
                 .environment(projectManager)
-                .environment(playback)
                 .preferredColorScheme(.dark)
         }
     }

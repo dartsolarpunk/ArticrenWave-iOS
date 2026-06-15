@@ -131,29 +131,3 @@ struct AWSSplashView: View {
 }
 
 // Subtle staff lines background decor
-struct AWStaffLines: View {
-    var body: some View {
-        GeometryReader { geo in
-            Canvas { ctx, size in
-                let spacing: CGFloat = 10
-                let startY = size.height * 0.30
-                for i in 0..<5 {
-                    let y = startY + CGFloat(i) * spacing
-                    var p = Path()
-                    p.move(to: CGPoint(x: 0, y: y))
-                    p.addLine(to: CGPoint(x: size.width, y: y))
-                    ctx.stroke(p, with: .color(.white.opacity(0.04)), lineWidth: 0.5)
-                }
-                let startY2 = size.height * 0.62
-                for i in 0..<5 {
-                    let y = startY2 + CGFloat(i) * spacing
-                    var p = Path()
-                    p.move(to: CGPoint(x: 0, y: y))
-                    p.addLine(to: CGPoint(x: size.width, y: y))
-                    ctx.stroke(p, with: .color(.white.opacity(0.03)), lineWidth: 0.5)
-                }
-            }
-        }
-        .ignoresSafeArea()
-    }
-}
