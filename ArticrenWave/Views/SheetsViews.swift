@@ -152,12 +152,10 @@ struct ExportSheet: View {
         ] as CFDictionary
 
         // Draw title
-        if let titleStr = CFAttributedStringCreate(nil, title, attrs) {
-            if let line = CTLineCreateWithAttributedString(titleStr) {
-                pdf.textPosition = CGPoint(x: 60, y: pageBox.height - 60)
-                CTLineDraw(line, pdf)
-            }
-        }
+        let titleStr = CFAttributedStringCreate(nil, title, attrs)
+        let titleLine = CTLineCreateWithAttributedString(titleStr!)
+        pdf.textPosition = CGPoint(x: 60, y: pageBox.height - 60)
+        CTLineDraw(titleLine, pdf)
 
         // Draw tempo marking
         let tempoStr = "\(doc.tempo) BPM" as CFString
@@ -165,11 +163,10 @@ struct ExportSheet: View {
             kCTFontAttributeName: CTFontCreateWithName("Helvetica" as CFString, 12, nil),
             kCTForegroundColorAttributeName: CGColor(gray: 0.3, alpha: 1)
         ] as CFDictionary
-        if let tempoAS = CFAttributedStringCreate(nil, tempoStr, tempoAttrs),
-           let tempoLine = CTLineCreateWithAttributedString(tempoAS) {
-            pdf.textPosition = CGPoint(x: 60, y: pageBox.height - 85)
-            CTLineDraw(tempoLine, pdf)
-        }
+        let tempoAS = CFAttributedStringCreate(nil, tempoStr, tempoAttrs)!
+        let tempoLine = CTLineCreateWithAttributedString(tempoAS)
+        pdf.textPosition = CGPoint(x: 60, y: pageBox.height - 85)
+        CTLineDraw(tempoLine, pdf)
 
         // Draw staves for each part
         let staffTop: CGFloat = pageBox.height - 130
@@ -187,11 +184,10 @@ struct ExportSheet: View {
                 kCTFontAttributeName: CTFontCreateWithName("Helvetica" as CFString, 10, nil),
                 kCTForegroundColorAttributeName: CGColor(gray: 0.4, alpha: 1)
             ] as CFDictionary
-            if let labelAS = CFAttributedStringCreate(nil, labelStr, labelAttrs),
-               let labelLine = CTLineCreateWithAttributedString(labelAS) {
-                pdf.textPosition = CGPoint(x: leftMargin - 70, y: baseY - 16)
-                CTLineDraw(labelLine, pdf)
-            }
+            let labelAS = CFAttributedStringCreate(nil, labelStr, labelAttrs)!
+            let labelLine = CTLineCreateWithAttributedString(labelAS)
+            pdf.textPosition = CGPoint(x: leftMargin - 70, y: baseY - 16)
+            CTLineDraw(labelLine, pdf)
 
             // Draw 5 staff lines
             pdf.setStrokeColor(CGColor(gray: 0.1, alpha: 1))
@@ -209,11 +205,10 @@ struct ExportSheet: View {
                 kCTFontAttributeName: CTFontCreateWithName("Times New Roman" as CFString, 40, nil),
                 kCTForegroundColorAttributeName: CGColor(gray: 0, alpha: 1)
             ] as CFDictionary
-            if let clefAS = CFAttributedStringCreate(nil, clefStr, clefAttrs),
-               let clefLine = CTLineCreateWithAttributedString(clefAS) {
-                pdf.textPosition = CGPoint(x: leftMargin + 4, y: baseY - 32)
-                CTLineDraw(clefLine, pdf)
-            }
+            let clefAS = CFAttributedStringCreate(nil, clefStr, clefAttrs)!
+            let clefLine = CTLineCreateWithAttributedString(clefAS)
+            pdf.textPosition = CGPoint(x: leftMargin + 4, y: baseY - 32)
+            CTLineDraw(clefLine, pdf)
 
             // Bar lines between measures
             let measureWidth = (rightMargin - leftMargin - 50) / CGFloat(max(part.measures.count, 1))
@@ -231,11 +226,10 @@ struct ExportSheet: View {
             kCTFontAttributeName: CTFontCreateWithName("Helvetica" as CFString, 9, nil),
             kCTForegroundColorAttributeName: CGColor(gray: 0.6, alpha: 1)
         ] as CFDictionary
-        if let footerAS = CFAttributedStringCreate(nil, footer, footerAttrs),
-           let footerLine = CTLineCreateWithAttributedString(footerAS) {
-            pdf.textPosition = CGPoint(x: 60, y: 30)
-            CTLineDraw(footerLine, pdf)
-        }
+        let footerAS = CFAttributedStringCreate(nil, footer, footerAttrs)!
+        let footerLine = CTLineCreateWithAttributedString(footerAS)
+        pdf.textPosition = CGPoint(x: 60, y: 30)
+        CTLineDraw(footerLine, pdf)
 
         pdf.endPDFPage()
         pdf.closePDF()
