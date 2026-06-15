@@ -1,0 +1,283 @@
+// !$*UTF8*$!
+{
+	archiveVersion = 1;
+	classes = {
+	};
+	objectVersion = 56;
+	objects = {
+
+/* Begin PBXBuildFile section */
+		A001 /* ArticrenWaveApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = A002 /* ArticrenWaveApp.swift */; };
+		A003 /* ContentView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A004 /* ContentView.swift */; };
+		A005 /* AppState.swift in Sources */ = {isa = PBXBuildFile; fileRef = A006 /* AppState.swift */; };
+		A007 /* MusicModels.swift in Sources */ = {isa = PBXBuildFile; fileRef = A008 /* MusicModels.swift */; };
+		A009 /* ScoreEngine.swift in Sources */ = {isa = PBXBuildFile; fileRef = A010 /* ScoreEngine.swift */; };
+		A011 /* AudioEngine.swift in Sources */ = {isa = PBXBuildFile; fileRef = A012 /* AudioEngine.swift */; };
+		A013 /* AuthManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = A014 /* AuthManager.swift */; };
+		A015 /* ProjectManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = A016 /* ProjectManager.swift */; };
+		A017 /* MainComposerView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A018 /* MainComposerView.swift */; };
+		A019 /* ScoreEditorView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A020 /* ScoreEditorView.swift */; };
+		A021 /* NotePalette.swift in Sources */ = {isa = PBXBuildFile; fileRef = A022 /* NotePalette.swift */; };
+		A023 /* PianoDrawerView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A024 /* PianoDrawerView.swift */; };
+		A025 /* OnboardingView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A026 /* OnboardingView.swift */; };
+		A027 /* MainMenuOverlay.swift in Sources */ = {isa = PBXBuildFile; fileRef = A028 /* MainMenuOverlay.swift */; };
+		A029 /* SheetsViews.swift in Sources */ = {isa = PBXBuildFile; fileRef = A030 /* SheetsViews.swift */; };
+		A031 /* Extensions.swift in Sources */ = {isa = PBXBuildFile; fileRef = A032 /* Extensions.swift */; };
+		A033 /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = A034 /* Assets.xcassets */; };
+		A035 /* Info.plist in Resources */ = {isa = PBXBuildFile; fileRef = A036 /* Info.plist */; };
+/* End PBXBuildFile section */
+
+/* Begin PBXFileReference section */
+		A002 /* ArticrenWaveApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ArticrenWaveApp.swift; sourceTree = "<group>"; };
+		A004 /* ContentView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Views/ContentView.swift; sourceTree = "<group>"; };
+		A006 /* AppState.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Models/AppState.swift; sourceTree = "<group>"; };
+		A008 /* MusicModels.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Models/MusicModels.swift; sourceTree = "<group>"; };
+		A010 /* ScoreEngine.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Services/ScoreEngine.swift; sourceTree = "<group>"; };
+		A012 /* AudioEngine.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Services/AudioEngine.swift; sourceTree = "<group>"; };
+		A014 /* AuthManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Services/AuthManager.swift; sourceTree = "<group>"; };
+		A016 /* ProjectManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Services/ProjectManager.swift; sourceTree = "<group>"; };
+		A018 /* MainComposerView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Views/MainComposerView.swift; sourceTree = "<group>"; };
+		A020 /* ScoreEditorView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Views/ScoreEditorView.swift; sourceTree = "<group>"; };
+		A022 /* NotePalette.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Views/NotePalette.swift; sourceTree = "<group>"; };
+		A024 /* PianoDrawerView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Views/PianoDrawerView.swift; sourceTree = "<group>"; };
+		A026 /* OnboardingView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Views/OnboardingView.swift; sourceTree = "<group>"; };
+		A028 /* MainMenuOverlay.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Views/MainMenuOverlay.swift; sourceTree = "<group>"; };
+		A030 /* SheetsViews.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Views/SheetsViews.swift; sourceTree = "<group>"; };
+		A032 /* Extensions.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Extensions/Extensions.swift; sourceTree = "<group>"; };
+		A034 /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
+		A036 /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = Info.plist; sourceTree = "<group>"; };
+		A037 /* ArticrenWave.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = ArticrenWave.entitlements; sourceTree = "<group>"; };
+		A099 /* ArticrenWave */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = ArticrenWave.app; sourceTree = BUILT_PRODUCTS_DIR; };
+/* End PBXFileReference section */
+
+/* Begin PBXFrameworksBuildPhase section */
+		A050 = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = ();
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXFrameworksBuildPhase section */
+
+/* Begin PBXGroup section */
+		A060 = {
+			isa = PBXGroup;
+			children = (
+				A070 /* ArticrenWave */,
+				A080 /* Products */,
+			);
+			sourceTree = "<group>";
+		};
+		A070 /* ArticrenWave */ = {
+			isa = PBXGroup;
+			children = (
+				A002,
+				A004,
+				A006,
+				A008,
+				A010,
+				A012,
+				A014,
+				A016,
+				A018,
+				A020,
+				A022,
+				A024,
+				A026,
+				A028,
+				A030,
+				A032,
+				A034,
+				A036,
+				A037,
+			);
+			path = ArticrenWave;
+			sourceTree = "<group>";
+		};
+		A080 /* Products */ = {
+			isa = PBXGroup;
+			children = (
+				A099,
+			);
+			name = Products;
+			sourceTree = "<group>";
+		};
+/* End PBXGroup section */
+
+/* Begin PBXNativeTarget section */
+		A090 /* ArticrenWave */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = A091;
+			buildPhases = (
+				A092 /* Sources */,
+				A050 /* Frameworks */,
+				A093 /* Resources */,
+			);
+			buildRules = ();
+			dependencies = ();
+			name = ArticrenWave;
+			productName = ArticrenWave;
+			productReference = A099;
+			productType = "com.apple.product-type.application";
+		};
+/* End PBXNativeTarget section */
+
+/* Begin PBXProject section */
+		A100 /* Project object */ = {
+			isa = PBXProject;
+			attributes = {
+				BuildIndependentTargetsInParallel = 1;
+				LastSwiftUpdateCheck = 1500;
+				LastUpgradeCheck = 1500;
+				TargetAttributes = {
+					A090 = {
+						CreatedOnToolsVersion = 15.0;
+					};
+				};
+			};
+			buildConfigurationList = A101;
+			compatibilityVersion = "Xcode 14.0";
+			developmentRegion = en;
+			hasScannedForEncodings = 0;
+			knownRegions = (en, Base);
+			mainGroup = A060;
+			productRefGroup = A080;
+			projectDirPath = "";
+			projectRoot = "";
+			targets = (A090);
+		};
+/* End PBXProject section */
+
+/* Begin PBXResourcesBuildPhase section */
+		A093 /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (A033, A035);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXResourcesBuildPhase section */
+
+/* Begin PBXSourcesBuildPhase section */
+		A092 /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				A001, A003, A005, A007, A009,
+				A011, A013, A015, A017, A019,
+				A021, A023, A025, A027, A029,
+				A031,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXSourcesBuildPhase section */
+
+/* Begin XCBuildConfiguration section */
+		A110 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ALWAYS_SEARCH_USER_PATHS = NO;
+				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+				CLANG_ENABLE_MODULES = YES;
+				CODE_SIGN_ENTITLEMENTS = ArticrenWave/ArticrenWave.entitlements;
+				CODE_SIGN_IDENTITY = "Apple Development";
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 1;
+				DEVELOPMENT_TEAM = "";
+				ENABLE_PREVIEWS = YES;
+				GENERATE_INFOPLIST_FILE = NO;
+				INFOPLIST_FILE = ArticrenWave/Info.plist;
+				IPHONEOS_DEPLOYMENT_TARGET = 16.0;
+				LD_RUNPATH_SEARCH_PATHS = "$(inherited) @executable_path/Frameworks";
+				MARKETING_VERSION = 1.0;
+				PRODUCT_BUNDLE_IDENTIFIER = ArticrenWaveAppStore;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SWIFT_EMIT_LOC_STRINGS = YES;
+				SWIFT_VERSION = 5.9;
+				TARGETED_DEVICE_FAMILY = "1,2";
+			};
+			name = Debug;
+		};
+		A111 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ALWAYS_SEARCH_USER_PATHS = NO;
+				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+				CLANG_ENABLE_MODULES = YES;
+				CODE_SIGN_ENTITLEMENTS = ArticrenWave/ArticrenWave.entitlements;
+				CODE_SIGN_IDENTITY = "Apple Distribution";
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 1;
+				DEVELOPMENT_TEAM = "";
+				ENABLE_PREVIEWS = NO;
+				GENERATE_INFOPLIST_FILE = NO;
+				INFOPLIST_FILE = ArticrenWave/Info.plist;
+				IPHONEOS_DEPLOYMENT_TARGET = 16.0;
+				LD_RUNPATH_SEARCH_PATHS = "$(inherited) @executable_path/Frameworks";
+				MARKETING_VERSION = 1.0;
+				PRODUCT_BUNDLE_IDENTIFIER = ArticrenWaveAppStore;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SWIFT_EMIT_LOC_STRINGS = YES;
+				SWIFT_OPTIMIZATION_LEVEL = "-Owholemodule";
+				SWIFT_VERSION = 5.9;
+				TARGETED_DEVICE_FAMILY = "1,2";
+			};
+			name = Release;
+		};
+		A112 /* Debug (Project) */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ALWAYS_SEARCH_USER_PATHS = NO;
+				CLANG_ENABLE_MODULES = YES;
+				COPY_PHASE_STRIP = NO;
+				DEBUG_INFORMATION_FORMAT = dwarf;
+				ENABLE_STRICT_OBJC_MSGSEND = YES;
+				GCC_C_LANGUAGE_STANDARD = gnu11;
+				GCC_DYNAMIC_NO_PIC = NO;
+				GCC_OPTIMIZATION_LEVEL = 0;
+				GCC_PREPROCESSOR_DEFINITIONS = ("DEBUG=1", "$(inherited)");
+				IPHONEOS_DEPLOYMENT_TARGET = 16.0;
+				MTL_ENABLE_DEBUG_INFO = INCLUDE_SOURCE;
+				MTL_FAST_MATH = YES;
+				ONLY_ACTIVE_ARCH = YES;
+				SDKROOT = iphoneos;
+			};
+			name = Debug;
+		};
+		A113 /* Release (Project) */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ALWAYS_SEARCH_USER_PATHS = NO;
+				CLANG_ENABLE_MODULES = YES;
+				COPY_PHASE_STRIP = NO;
+				DEBUG_INFORMATION_FORMAT = "dwarf-with-dsym";
+				ENABLE_NS_ASSERTIONS = NO;
+				ENABLE_STRICT_OBJC_MSGSEND = YES;
+				GCC_C_LANGUAGE_STANDARD = gnu11;
+				IPHONEOS_DEPLOYMENT_TARGET = 16.0;
+				MTL_FAST_MATH = YES;
+				SDKROOT = iphoneos;
+				SWIFT_OPTIMIZATION_LEVEL = "-Owholemodule";
+				VALIDATE_PRODUCT = YES;
+			};
+			name = Release;
+		};
+/* End XCBuildConfiguration section */
+
+/* Begin XCConfigurationList section */
+		A091 /* Build configuration list for PBXNativeTarget */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (A110 /* Debug */, A111 /* Release */);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
+		A101 /* Build configuration list for PBXProject */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (A112 /* Debug */, A113 /* Release */);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
+/* End XCConfigurationList section */
+
+	};
+	rootObject = A100 /* Project object */;
+}

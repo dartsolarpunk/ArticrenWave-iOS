@@ -1,0 +1,32 @@
+# Xcode
+*.xcuserstate
+*.xcuserdatad/
+*.xcscmblueprint
+DerivedData/
+build/
+*.ipa
+*.dSYM.zip
+*.dSYM
+
+# Swift Package Manager
+.build/
+Packages/
+Package.resolved
+
+# CocoaPods (if used later)
+Pods/
+Podfile.lock
+
+# Keys — never commit these
+*.p8
+*.p12
+*.mobileprovision
+AuthKey_*.txt
+
+# OS
+.DS_Store
+*.swp
+Thumbs.db
+
+# Sounds (large files — add via Git LFS or bundle separately)
+ArticrenWave/Resources/Sounds/*.sf2

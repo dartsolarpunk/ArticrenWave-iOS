@@ -1,0 +1,103 @@
+name: ArticrenWave — Build & Deploy to TestFlight
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+env:
+  SCHEME: ArticrenWave
+  PROJECT: ArticrenWave.xcodeproj
+  BUNDLE_ID: ArticrenWaveAppStore
+  KEY_ID: NQXQ595W59
+
+jobs:
+  testflight:
+    name: Build & Upload to TestFlight
+    runs-on: macos-14
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Select Xcode 15
+        run: sudo xcode-select -s /Applications/Xcode_15.2.app
+
+      - name: Install xcbeautify
+        run: brew install xcbeautify
+
+      # ── Signing setup ──────────────────────────────────────────────────────
+      - name: Import certificate & provisioning profile
+        env:
+          CERT_B64: ${{ secrets.BUILD_CERTIFICATE_BASE64 }}
+          CERT_PWD: ${{ secrets.P12_PASSWORD }}
+          PP_B64:   ${{ secrets.BUILD_PROVISION_PROFILE_BASE64 }}
+          KP_PWD:   ${{ secrets.KEYCHAIN_PASSWORD }}
+        run: |
+          KP=$RUNNER_TEMP/aw.keychain
+          security create-keychain -p "$KP_PWD" $KP
+          security set-keychain-settings -lut 21600 $KP
+          security unlock-keychain -p "$KP_PWD" $KP
+
+          CERT=$RUNNER_TEMP/cert.p12
+          echo -n "$CERT_B64" | base64 --decode -o $CERT
+          security import $CERT -P "$CERT_PWD" -A -t cert -f pkcs12 -k $KP
+          security list-keychain -d user -s $KP
+
+          PP=$RUNNER_TEMP/aw.mobileprovision
+          echo -n "$PP_B64" | base64 --decode -o $PP
+          mkdir -p ~/Library/MobileDevice/Provisioning\ Profiles
+          cp $PP ~/Library/MobileDevice/Provisioning\ Profiles/
+
+      - name: Write ASC Auth Key
+        env:
+          ASC_KEY: ${{ secrets.ASC_PRIVATE_KEY }}
+        run: |
+          mkdir -p ~/.appstoreconnect/private_keys
+          echo "$ASC_KEY" > ~/.appstoreconnect/private_keys/AuthKey_${{ env.KEY_ID }}.p8
+
+      # ── Build ──────────────────────────────────────────────────────────────
+      - name: Archive
+        run: |
+          xcodebuild archive \
+            -project "$PROJECT" \
+            -scheme "$SCHEME" \
+            -sdk iphoneos \
+            -configuration Release \
+            -archivePath "$RUNNER_TEMP/ArticrenWave.xcarchive" \
+            CODE_SIGN_STYLE=Automatic \
+            DEVELOPMENT_TEAM=${{ secrets.DEVELOPMENT_TEAM }} \
+            2>&1 | xcbeautify
+
+      - name: Export IPA
+        run: |
+          cat > $RUNNER_TEMP/ExportOptions.plist << 'EOF'
+          <?xml version="1.0" encoding="UTF-8"?>
+          <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+          <plist version="1.0"><dict>
+            <key>method</key><string>app-store</string>
+            <key>teamID</key><string>${{ secrets.DEVELOPMENT_TEAM }}</string>
+            <key>signingStyle</key><string>automatic</string>
+            <key>uploadBitcode</key><false/>
+            <key>uploadSymbols</key><true/>
+          </dict></plist>
+          EOF
+
+          xcodebuild -exportArchive \
+            -archivePath "$RUNNER_TEMP/ArticrenWave.xcarchive" \
+            -exportOptionsPlist "$RUNNER_TEMP/ExportOptions.plist" \
+            -exportPath "$RUNNER_TEMP/export" \
+            2>&1 | xcbeautify
+
+      # ── Upload ─────────────────────────────────────────────────────────────
+      - name: Upload to TestFlight via altool
+        run: |
+          xcrun altool --upload-app \
+            --type ios \
+            --file "$RUNNER_TEMP/export/ArticrenWave.ipa" \
+            --apiKey "${{ env.KEY_ID }}" \
+            --apiIssuer "${{ secrets.ASC_ISSUER_ID }}" \
+            --verbose
+
+      - name: Clean keychain
+        if: always()
+        run: security delete-keychain $RUNNER_TEMP/aw.keychain || true
