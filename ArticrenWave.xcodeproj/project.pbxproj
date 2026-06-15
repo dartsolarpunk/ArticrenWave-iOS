@@ -24,6 +24,8 @@
 		A029 /* SheetsViews.swift in Sources */ = {isa = PBXBuildFile; fileRef = A030 /* SheetsViews.swift */; };
 		A031 /* Extensions.swift in Sources */ = {isa = PBXBuildFile; fileRef = A032 /* Extensions.swift */; };
 		A033 /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = A034 /* Assets.xcassets */; };
+		B003 /* AWSSplashView.swift in Sources */ = {isa = PBXBuildFile; fileRef = B001 /* AWSSplashView.swift */; };
+		B004 /* AWWelcomeView.swift in Sources */ = {isa = PBXBuildFile; fileRef = B002 /* AWWelcomeView.swift */; };
 		A035 /* Info.plist in Resources */ = {isa = PBXBuildFile; fileRef = A036 /* Info.plist */; };
 /* End PBXBuildFile section */
 
@@ -46,6 +48,8 @@
 		A032 /* Extensions.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Extensions/Extensions.swift; sourceTree = "<group>"; };
 		A034 /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
 		A036 /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = Info.plist; sourceTree = "<group>"; };
+		B001 /* AWSSplashView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Views/AWSSplashView.swift; sourceTree = "<group>"; };
+		B002 /* AWWelcomeView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Views/AWWelcomeView.swift; sourceTree = "<group>"; };
 		A037 /* ArticrenWave.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = ArticrenWave.entitlements; sourceTree = "<group>"; };
 		A099 /* ArticrenWave */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = ArticrenWave.app; sourceTree = BUILT_PRODUCTS_DIR; };
 /* End PBXFileReference section */
@@ -90,6 +94,8 @@
 				A034,
 				A036,
 				A037,
+				B001,
+				B002,
 			);
 			path = ArticrenWave;
 			sourceTree = "<group>";
@@ -166,6 +172,8 @@
 				A011, A013, A015, A017, A019,
 				A021, A023, A025, A027, A029,
 				A031,
+				B003,
+				B004,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -181,7 +189,7 @@
 				CODE_SIGN_ENTITLEMENTS = ArticrenWave/ArticrenWave.entitlements;
 				CODE_SIGN_IDENTITY = "Apple Development";
 				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 1;
+				CURRENT_PROJECT_VERSION = 2;
 				DEVELOPMENT_TEAM = "";
 				ENABLE_PREVIEWS = YES;
 				GENERATE_INFOPLIST_FILE = NO;
@@ -206,7 +214,7 @@
 				CODE_SIGN_ENTITLEMENTS = ArticrenWave/ArticrenWave.entitlements;
 				CODE_SIGN_IDENTITY = "Apple Distribution";
 				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 1;
+				CURRENT_PROJECT_VERSION = 2;
 				DEVELOPMENT_TEAM = "";
 				ENABLE_PREVIEWS = NO;
 				GENERATE_INFOPLIST_FILE = NO;

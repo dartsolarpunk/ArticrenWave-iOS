@@ -77,6 +77,12 @@ struct MainMenuOverlay: View {
                                     Text(authManager.userFullName.isEmpty ? "Composer" : authManager.userFullName)
                                         .font(.system(size: 14, weight: .semibold))
                                         .foregroundColor(.white)
+                                    if authManager.isGuest {
+                                        Text("GUEST MODE")
+                                            .font(.system(size: 8, weight: .bold, design: .monospaced))
+                                            .foregroundColor(appState.theme.secondaryAccent.opacity(0.8))
+                                            .kerning(1)
+                                    }
                                     if !authManager.userEmail.isEmpty {
                                         Text(authManager.userEmail)
                                             .font(.system(size: 11))
@@ -90,14 +96,20 @@ struct MainMenuOverlay: View {
                             }
 
                             Button {
-                                authManager.signOut()
-                                withAnimation { appState.isMainMenuOpen = false }
+                                withAnimation {
+                                    appState.isMainMenuOpen = false
+                                    // Slight delay so menu closes before auth transition
+                                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
+                                        authManager.signOut()
+                                    }
+                                }
                             } label: {
-                                Text("Sign Out")
-                                    .font(.system(size: 12))
-                                    .foregroundColor(.red.opacity(0.7))
+                                Label(authManager.isGuest ? "Exit Guest Mode" : "Sign Out",
+                                      systemImage: "rectangle.portrait.and.arrow.right")
+                                    .font(.system(size: 12, weight: .medium))
+                                    .foregroundColor(.red.opacity(0.75))
                                     .frame(maxWidth: .infinity)
-                                    .padding(.vertical, 8)
+                                    .padding(.vertical, 10)
                                     .background(Color.red.opacity(0.08))
                                     .clipShape(RoundedRectangle(cornerRadius: 8))
                             }

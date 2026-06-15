@@ -59,29 +59,34 @@ class AudioEngine: ObservableObject {
     private var isSetup = false
 
     func preloadSounds() {
-        setupEngine()
-        loadInstrument(currentInstrument)
+        // Deferred — called lazily on first key press to avoid crash-on-launch
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
+            self.setupEngine()
+        }
     }
 
     private func setupEngine() {
         guard !isSetup else { return }
-        engine.attach(sampler)
-        engine.attach(reverb)
-        engine.attach(mixer)
-
-        reverb.loadFactoryPreset(.mediumRoom)
-        reverb.wetDryMix = 20
-
-        engine.connect(sampler, to: reverb, format: nil)
-        engine.connect(reverb, to: engine.mainMixerNode, format: nil)
-
         do {
-            try AVAudioSession.sharedInstance().setCategory(.playback, mode: .default)
+            try AVAudioSession.sharedInstance().setCategory(.playback, mode: .default,
+                options: [.mixWithOthers])
             try AVAudioSession.sharedInstance().setActive(true)
+
+            engine.attach(sampler)
+            engine.attach(reverb)
+            engine.attach(mixer)
+
+            reverb.loadFactoryPreset(.mediumRoom)
+            reverb.wetDryMix = 20
+
+            engine.connect(sampler, to: reverb, format: nil)
+            engine.connect(reverb, to: engine.mainMixerNode, format: nil)
+
             try engine.start()
             isSetup = true
         } catch {
-            print("AudioEngine setup error: \(error)")
+            // Non-fatal — audio simply won't play until retry
+            print("AudioEngine setup: \(error.localizedDescription)")
         }
     }
 
