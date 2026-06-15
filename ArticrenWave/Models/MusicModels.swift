@@ -240,13 +240,7 @@ enum InstrumentFamily: String, CaseIterable, Codable {
         }
     }
 
-    var clef: Clef {
-        switch self {
-        case .cello, .doubleBass, .bassoon, .tuba: return .bass
-        case .trombone: return .bass
-        default: return .treble
-        }
-    }
+
 }
 
 enum Clef: String, Codable {

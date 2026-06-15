@@ -71,13 +71,10 @@ struct ExportSheet: View {
 
                     // PDF export
                     ActionButton(label: "Export PDF Score", icon: "doc.richtext", color: Color.white.opacity(0.6)) {
-                        projectManager.exportPDF(
-                            scoreView: ScoreEditorView()
-                                .environmentObject(appState)
-                                .environmentObject(scoreEngine),
-                            document: scoreEngine.document
-                        ) { url in
-                            if let url = url { exportURL = url; showShareSheet = true }
+                        Task { @MainActor in
+                            projectManager.exportPDF(document: scoreEngine.document) { url in
+                                if let url = url { exportURL = url; showShareSheet = true }
+                            }
                         }
                     }
 

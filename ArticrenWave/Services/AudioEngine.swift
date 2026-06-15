@@ -115,7 +115,7 @@ class AudioEngine: ObservableObject {
     }
 
     func playPitch(_ pitch: Pitch, duration: Double = 0.5) {
-        let midi = UInt8(clamping: pitch.midiNote)
+        let midi = midiNote(pitch.midiNote)
         playNote(midiNote: midi, duration: duration)
     }
 
@@ -244,7 +244,7 @@ class AudioEngine: ObservableObject {
     }
 
     // MARK: - MIDI Sequence Builder
-    private func buildMIDISequence(from document: ScoreDocument) -> SimpleMIDISequence {
+    func buildMIDISequence(from document: ScoreDocument) -> SimpleMIDISequence {
         let seq = SimpleMIDISequence(bpm: document.tempo)
         let beatsPerSecond = Double(document.tempo) / 60.0
 
@@ -375,5 +375,13 @@ class SimpleMIDISequence {
             v >>= 7
         }
         return bytes
+    }
+}
+
+// MARK: - Static builder for use outside AudioEngine
+extension SimpleMIDISequence {
+    static func build(from document: ScoreDocument) -> SimpleMIDISequence {
+        let eng = AudioEngine()
+        return eng.buildMIDISequence(from: document)
     }
 }

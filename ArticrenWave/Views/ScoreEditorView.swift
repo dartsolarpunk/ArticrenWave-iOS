@@ -126,13 +126,11 @@ struct ClefView: View {
 
             // Draw clef symbol as text (system glyphs approximate)
             let clefSymbol = clef == .treble ? "𝄞" : "𝄢"
-            let attr = AttributedString(clefSymbol)
-            var attrStr = AttributedString(clefSymbol)
-            attrStr.foregroundColor = .white
-            attrStr.font = .system(size: clef == .treble ? 38 : 28, weight: .regular)
-
+            let fontSize: CGFloat = clef == .treble ? 38 : 28
             ctx.draw(
-                Text(AttributedString(attrStr)).foregroundColor(.white),
+                Text(clefSymbol)
+                    .font(.system(size: fontSize, weight: .regular))
+                    .foregroundColor(.white),
                 at: CGPoint(x: size.width / 2, y: size.height / 2),
                 anchor: .center
             )
