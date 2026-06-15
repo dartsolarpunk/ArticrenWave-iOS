@@ -53,7 +53,7 @@ struct AWSSplashView: View {
                         .frame(width: 156, height: 156)
 
                     // App logo image
-                    Image("AppIcon")
+                    Image("AppLogo")
                         .resizable()
                         .scaledToFill()
                         .frame(width: 148, height: 148)
