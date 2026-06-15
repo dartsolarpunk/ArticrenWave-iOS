@@ -111,9 +111,14 @@ jobs:
           /usr/libexec/PlistBuddy -c "Set :CFBundleVersion $BUILD_NUM" "$APP/Info.plist"
           echo "After patch: $(plutil -extract CFBundleVersion raw "$APP/Info.plist")"
 
-          # Extract entitlements from existing signature
-          codesign -d --entitlements "$RUNNER_TEMP/ent.plist" --xml "$APP" 2>/dev/null || \
-            cp "ArticrenWave/ArticrenWave.entitlements" "$RUNNER_TEMP/ent.plist"
+          # Copy provisioning profile into app
+          cp "$RUNNER_TEMP/articrenwave.mobileprovision" "$APP/embedded.mobileprovision"
+
+          # Re-sign using the project entitlements only (Sign In with Apple)
+          /usr/bin/codesign --force --sign "iPhone Distribution: DART Meadow LLC (L7AHWS9Q6V)" \
+            --entitlements "ArticrenWave/ArticrenWave.entitlements" \
+            --keychain "$KEYCHAIN_PATH" \
+            "$APP"
           
           # Copy provisioning profile back into app
           cp "$RUNNER_TEMP/articrenwave.mobileprovision" "$APP/embedded.mobileprovision"
