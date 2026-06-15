@@ -30,7 +30,7 @@ struct PianoDrawerView: View {
                     HStack(spacing: 4) {
                         Image(systemName: "music.note.list")
                             .font(.system(size: 12))
-                        Text(audioEngine.currentInstrument.rawValue)
+                        Text(audioEngine.currentInstrumentName)
                             .font(.system(size: 12, weight: .semibold, design: .rounded))
                         Image(systemName: "chevron.down")
                             .font(.system(size: 9))
@@ -174,7 +174,7 @@ struct PianoScrollView: View {
 
     func isPlayable(pitch: Pitch) -> Bool {
         // Map AudioInstrument to InstrumentFamily for range check
-        let range = audioEngine.currentInstrument.playableOctaveRange
+        let range = playableOctaveForInstrument(audioEngine.currentInstrumentName)
         return range.contains(pitch.octave)
     }
 }
@@ -260,7 +260,7 @@ struct WhiteKey: View {
                         if scoreEngine.isRecording {
                             scoreEngine.recordLiveNote(
                                 pitch: pitch,
-                                instrument: InstrumentFamily(rawValue: audioEngine.currentInstrument.rawValue) ?? .piano,
+                                instrument: InstrumentFamily(rawValue: audioEngine.currentInstrumentName) ?? .piano,
                                 duration: .quarter
                             )
                         }

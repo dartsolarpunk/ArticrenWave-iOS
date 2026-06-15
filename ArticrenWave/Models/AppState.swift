@@ -17,6 +17,22 @@ enum ScoreEditMode {
 // AudioInstrument — mirrors the one in MusicModels for @Observable macro scope
 // The actual full definition remains in MusicModels.swift
 
+// MARK: - Audio Export Format
+enum AudioExportFormat: String, CaseIterable {
+    case wav = "WAV"
+    case mp3 = "MP3"
+    case m4a = "M4A"
+    case midi = "MIDI"
+    var fileExtension: String {
+        switch self {
+        case .wav: return "wav"
+        case .mp3: return "mp3"
+        case .m4a: return "m4a"
+        case .midi: return "mid"
+        }
+    }
+}
+
 // MARK: - App Theme
 struct AWTheme {
     var accent: Color       = Color(hex: "#E040FB")
