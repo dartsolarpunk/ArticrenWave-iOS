@@ -142,7 +142,7 @@ struct ComposerToolbar: View {
         }
         .padding(.horizontal, 8)
         .frame(height: 50)
-        .background(appState.themeBackground.opacity(0.97))
+        .background(appState.theme.background.opacity(0.97))
         .overlay(Rectangle().fill(Color.white.opacity(0.06)).frame(height: 1), alignment: .bottom)
         // Sheets — must pass environmentObjects explicitly through sheet presentation
         .sheet(isPresented: $showExportSheet) {

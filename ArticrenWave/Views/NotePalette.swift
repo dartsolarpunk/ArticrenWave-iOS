@@ -120,7 +120,7 @@ struct PaletteButton: View {
     let action: () -> Void
 
     var activeColor: Color {
-        accent ?? appState.themeAccent
+        accent ?? appState.theme.accent
     }
 
     var body: some View {

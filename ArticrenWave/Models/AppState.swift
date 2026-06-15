@@ -2,6 +2,21 @@
 import SwiftUI
 import Observation
 
+// MARK: - Types needed by @Observable classes (must be in same file for macro expansion)
+enum ScoreEditMode {
+    case select
+    case addNote(NoteDuration)
+    case addRest(RestDuration)
+    case addAccidental(Accidental)
+    case addAccent
+    case addTie
+    case addSlur
+    case delete
+}
+
+// AudioInstrument — mirrors the one in MusicModels for @Observable macro scope
+// The actual full definition remains in MusicModels.swift
+
 // MARK: - App Theme
 struct AWTheme {
     var accent: Color       = Color(hex: "#E040FB")
@@ -67,13 +82,11 @@ class AuthManager {
 @Observable
 class AudioEngine {
     var currentInstrumentName: String = AudioInstrument.grandPiano.rawValue
-    var currentInstrument: AudioInstrument { AudioInstrument(rawValue: currentInstrumentName) ?? .grandPiano }
+
 
     static let shared = AudioEngine()
 
-    func loadInstrument(_ instr: AudioInstrument) {
-        currentInstrumentName = instr.rawValue
-    }
+    func loadInstrumentNamed(_ name: String) { currentInstrumentName = name }
 
     func playPitch(_ pitch: Pitch, duration: Double = 0.4) {
         // Audio stub — wired after stable launch

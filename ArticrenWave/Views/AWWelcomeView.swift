@@ -7,7 +7,7 @@ struct AWWelcomeView: View {
     @Environment(AppState.self) private var appState
     @Environment(AuthManager.self) private var authManager
     @State private var ringPulse        = false
-    @State private var storageChoice: AuthManager.StoragePreference = .device
+    @State private var storageChoice: StoragePreference = .device
     @State private var showStoragePicker = false
     @State private var iCloudAvailable  = false
 
@@ -26,7 +26,7 @@ struct AWWelcomeView: View {
                 // Logo orb
                 ZStack {
                     Circle()
-                        .stroke(appState.themeAccent.opacity(0.07), lineWidth: 1)
+                        .stroke(appState.theme.accent.opacity(0.07), lineWidth: 1)
                         .frame(width: ringPulse ? 210 : 178, height: ringPulse ? 210 : 178)
                         .animation(.easeInOut(duration: 2.5).repeatForever(autoreverses: true),
                                    value: ringPulse)
@@ -36,8 +36,8 @@ struct AWWelcomeView: View {
                     Circle()
                         .stroke(
                             LinearGradient(
-                                colors: [appState.themeAccent.opacity(0.5),
-                                         appState.themeSecondary.opacity(0.3)],
+                                colors: [appState.theme.accent.opacity(0.5),
+                                         appState.theme.secondary.opacity(0.3)],
                                 startPoint: .topLeading, endPoint: .bottomTrailing
                             ),
                             lineWidth: 1.5
@@ -61,7 +61,7 @@ struct AWWelcomeView: View {
                         .kerning(5)
                     Text("AR Classical Score Writing")
                         .font(.system(size: 11, weight: .medium, design: .monospaced))
-                        .foregroundColor(appState.themeAccent.opacity(0.7))
+                        .foregroundColor(appState.theme.accent.opacity(0.7))
                         .kerning(2)
                     Text("DART Meadow · Radical Deepscale")
                         .font(.system(size: 9, design: .monospaced))
@@ -237,13 +237,13 @@ struct AWStorageChip: View {
                     Image(systemName: "checkmark").font(.system(size: 10, weight: .bold))
                 }
             }
-            .foregroundColor(isSelected ? appState.themeAccent : .white.opacity(isDisabled ? 0.2 : 0.55))
+            .foregroundColor(isSelected ? appState.theme.accent : .white.opacity(isDisabled ? 0.2 : 0.55))
             .frame(maxWidth: .infinity).padding(.vertical, 10)
             .background(
                 RoundedRectangle(cornerRadius: 10)
-                    .fill(isSelected ? appState.themeAccent.opacity(0.12) : Color.white.opacity(0.05))
+                    .fill(isSelected ? appState.theme.accent.opacity(0.12) : Color.white.opacity(0.05))
                     .overlay(RoundedRectangle(cornerRadius: 10)
-                        .stroke(isSelected ? appState.themeAccent.opacity(0.5) : Color.clear, lineWidth: 1))
+                        .stroke(isSelected ? appState.theme.accent.opacity(0.5) : Color.clear, lineWidth: 1))
             )
         }
         .disabled(isDisabled)

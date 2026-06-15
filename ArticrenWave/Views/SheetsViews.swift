@@ -17,14 +17,14 @@ struct ExportSheet: View {
     var body: some View {
         NavigationView {
             ZStack {
-                appState.themeBackground.ignoresSafeArea()
+                appState.theme.background.ignoresSafeArea()
 
                 VStack(spacing: 20) {
                     // Format picker
                     VStack(alignment: .leading, spacing: 12) {
                         Label("Audio Export", systemImage: "waveform.path.ecg")
                             .font(.system(size: 13, weight: .semibold))
-                            .foregroundColor(appState.themeAccent)
+                            .foregroundColor(appState.theme.accent)
 
                         ForEach(AudioExportFormat.allCases, id: \.self) { format in
                             RadioRow(label: format.rawValue, isSelected: selectedFormat == format) {
@@ -40,13 +40,13 @@ struct ExportSheet: View {
                     if audioEngine.isExporting {
                         VStack(spacing: 8) {
                             ProgressView(value: audioEngine.exportProgress)
-                                .tint(appState.themeAccent)
+                                .tint(appState.theme.accent)
                             Text("Rendering audio…")
                                 .font(.system(size: 12))
                                 .foregroundColor(.white.opacity(0.5))
                         }
                     } else {
-                        ActionButton(label: "Export Audio", icon: "music.quarternote.3", color: appState.themeAccent) {
+                        ActionButton(label: "Export Audio", icon: "music.quarternote.3", color: appState.theme.accent) {
                             audioEngine.renderScoreToAudio(
                                 document: scoreEngine.document,
                                 format: selectedFormat
@@ -63,7 +63,7 @@ struct ExportSheet: View {
                     }
 
                     // MIDI export
-                    ActionButton(label: "Export MIDI", icon: "pianokeys", color: appState.themeSecondary) {
+                    ActionButton(label: "Export MIDI", icon: "pianokeys", color: appState.theme.secondary) {
                         ProjectManager.shared.exportMIDI(from: scoreEngine.document) { url in
                             if let url = url { exportURL = url; showShareSheet = true }
                         }
@@ -88,7 +88,7 @@ struct ExportSheet: View {
                     if !statusMessage.isEmpty {
                         Text(statusMessage)
                             .font(.system(size: 12))
-                            .foregroundColor(appState.themeAccent)
+                            .foregroundColor(appState.theme.accent)
                     }
 
                     Spacer()
@@ -100,7 +100,7 @@ struct ExportSheet: View {
             .toolbar {
                 ToolbarItem(placement: .navigationBarTrailing) {
                     Button("Done") { dismiss() }
-                        .foregroundColor(appState.themeAccent)
+                        .foregroundColor(appState.theme.accent)
                 }
             }
         }
@@ -122,7 +122,7 @@ struct RadioRow: View {
         Button(action: action) {
             HStack {
                 Image(systemName: isSelected ? "largecircle.fill.circle" : "circle")
-                    .foregroundColor(isSelected ? appState.themeAccent : .white.opacity(0.35))
+                    .foregroundColor(isSelected ? appState.theme.accent : .white.opacity(0.35))
                 Text(label)
                     .font(.system(size: 13))
                     .foregroundColor(.white.opacity(0.8))
@@ -166,14 +166,14 @@ struct LayoutPickerSheet: View {
     var body: some View {
         NavigationView {
             ZStack {
-                appState.themeBackground.ignoresSafeArea()
+                appState.theme.background.ignoresSafeArea()
 
                 VStack(spacing: 16) {
                     // Presets
                     VStack(alignment: .leading, spacing: 10) {
                         Label("Layout Presets", systemImage: "music.note.list")
                             .font(.system(size: 13, weight: .semibold))
-                            .foregroundColor(appState.themeAccent)
+                            .foregroundColor(appState.theme.accent)
 
                         ForEach(ScoreLayoutPreset.allCases, id: \.self) { preset in
                             Button {
@@ -192,13 +192,13 @@ struct LayoutPickerSheet: View {
                                     Spacer()
                                     if scoreEngine.layoutPreset == preset {
                                         Image(systemName: "checkmark")
-                                            .foregroundColor(appState.themeAccent)
+                                            .foregroundColor(appState.theme.accent)
                                     }
                                 }
                                 .padding(12)
                                 .background(
                                     RoundedRectangle(cornerRadius: 10)
-                                        .fill(scoreEngine.layoutPreset == preset ? appState.themeAccent.opacity(0.1) : Color.white.opacity(0.04))
+                                        .fill(scoreEngine.layoutPreset == preset ? appState.theme.accent.opacity(0.1) : Color.white.opacity(0.04))
                                 )
                             }
                         }
@@ -211,7 +211,7 @@ struct LayoutPickerSheet: View {
                     VStack(alignment: .leading, spacing: 10) {
                         Label("Add Instrument", systemImage: "plus.circle")
                             .font(.system(size: 13, weight: .semibold))
-                            .foregroundColor(appState.themeAccent)
+                            .foregroundColor(appState.theme.accent)
 
                         ScrollView(.horizontal, showsIndicators: false) {
                             HStack(spacing: 8) {
@@ -245,7 +245,7 @@ struct LayoutPickerSheet: View {
             .toolbar {
                 ToolbarItem(placement: .navigationBarTrailing) {
                     Button("Done") { dismiss() }
-                        .foregroundColor(appState.themeAccent)
+                        .foregroundColor(appState.theme.accent)
                 }
             }
         }
@@ -263,7 +263,7 @@ struct TempoSheet: View {
     var body: some View {
         NavigationView {
             ZStack {
-                appState.themeBackground.ignoresSafeArea()
+                appState.theme.background.ignoresSafeArea()
 
                 VStack(spacing: 24) {
                     // BPM display
@@ -278,12 +278,12 @@ struct TempoSheet: View {
 
                         Text(tempoLabel(Int(tempo)))
                             .font(.system(size: 13, design: .rounded))
-                            .foregroundColor(appState.themeAccent)
+                            .foregroundColor(appState.theme.accent)
                     }
                     .padding(.top, 20)
 
                     Slider(value: $tempo, in: 40...208, step: 1)
-                        .tint(appState.themeAccent)
+                        .tint(appState.theme.accent)
                         .padding(.horizontal, 24)
 
                     // Common tempos
@@ -298,12 +298,12 @@ struct TempoSheet: View {
                                     Text(tempoLabel(bpm))
                                         .font(.system(size: 9))
                                 }
-                                .foregroundColor(Int(tempo) == bpm ? appState.themeAccent : .white.opacity(0.6))
+                                .foregroundColor(Int(tempo) == bpm ? appState.theme.accent : .white.opacity(0.6))
                                 .frame(maxWidth: .infinity)
                                 .padding(.vertical, 10)
                                 .background(
                                     RoundedRectangle(cornerRadius: 8)
-                                        .fill(Int(tempo) == bpm ? appState.themeAccent.opacity(0.12) : Color.white.opacity(0.04))
+                                        .fill(Int(tempo) == bpm ? appState.theme.accent.opacity(0.12) : Color.white.opacity(0.04))
                                 )
                             }
                         }
@@ -321,7 +321,7 @@ struct TempoSheet: View {
                         scoreEngine.document.tempo = Int(tempo)
                         dismiss()
                     }
-                    .foregroundColor(appState.themeAccent)
+                    .foregroundColor(appState.theme.accent)
                     .fontWeight(.semibold)
                 }
             }

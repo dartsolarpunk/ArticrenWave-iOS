@@ -23,7 +23,7 @@ struct PianoDrawerView: View {
                 Menu {
                     ForEach(AudioInstrument.allCases, id: \.self) { instr in
                         Button(instr.rawValue) {
-                            audioEngine.loadInstrument(instr)
+                            audioEngine.loadInstrumentNamed(instr)
                         }
                     }
                 } label: {
@@ -39,8 +39,8 @@ struct PianoDrawerView: View {
                     .padding(.horizontal, 10)
                     .padding(.vertical, 6)
                     .background(
-                        Capsule().fill(appState.themeAccent.opacity(0.15))
-                            .overlay(Capsule().stroke(appState.themeAccent.opacity(0.4), lineWidth: 1))
+                        Capsule().fill(appState.theme.accent.opacity(0.15))
+                            .overlay(Capsule().stroke(appState.theme.accent.opacity(0.4), lineWidth: 1))
                     )
                 }
 
@@ -56,11 +56,11 @@ struct PianoDrawerView: View {
                         jumpOctave = oct
                     }
                     .font(.system(size: 12, weight: jumpOctave == oct ? .bold : .regular))
-                    .foregroundColor(jumpOctave == oct ? appState.themeAccent : .white.opacity(0.5))
+                    .foregroundColor(jumpOctave == oct ? appState.theme.accent : .white.opacity(0.5))
                     .frame(width: 24, height: 24)
                     .background(
                         Circle()
-                            .fill(jumpOctave == oct ? appState.themeAccent.opacity(0.15) : .clear)
+                            .fill(jumpOctave == oct ? appState.theme.accent.opacity(0.15) : .clear)
                     )
                 }
 
@@ -69,9 +69,9 @@ struct PianoDrawerView: View {
                     jumpOctave = 8 // special: scroll to sigma view
                 }
                 .font(.system(size: 13, weight: .bold))
-                .foregroundColor(jumpOctave == 8 ? appState.themeSecondary : .white.opacity(0.5))
+                .foregroundColor(jumpOctave == 8 ? appState.theme.secondary : .white.opacity(0.5))
                 .frame(width: 26, height: 26)
-                .background(Circle().fill(jumpOctave == 8 ? appState.themeSecondary.opacity(0.15) : .clear))
+                .background(Circle().fill(jumpOctave == 8 ? appState.theme.secondary.opacity(0.15) : .clear))
             }
             .padding(.horizontal, 12)
             .padding(.bottom, 8)
@@ -226,19 +226,19 @@ struct WhiteKey: View {
                 // Middle C markers
                 if isMiddleC {
                     Circle()
-                        .fill(appState.themeAccent)
+                        .fill(appState.theme.accent)
                         .frame(width: 6, height: 6)
                     Text("C4")
                         .font(.system(size: 6, weight: .bold))
-                        .foregroundColor(appState.themeAccent)
+                        .foregroundColor(appState.theme.accent)
                 }
                 if isMiddleCBass {
                     Circle()
-                        .fill(appState.themeSecondary)
+                        .fill(appState.theme.secondary)
                         .frame(width: 6, height: 6)
                     Text("C3")
                         .font(.system(size: 6, weight: .bold))
-                        .foregroundColor(appState.themeSecondary)
+                        .foregroundColor(appState.theme.secondary)
                 }
                 if let label = octaveLabel, !isMiddleC && !isMiddleCBass {
                     Text(label)
@@ -272,7 +272,7 @@ struct WhiteKey: View {
     }
 
     var keyColor: Color {
-        if isPressed { return appState.themeAccent.opacity(0.35) }
+        if isPressed { return appState.theme.accent.opacity(0.35) }
         if !isPlayable { return Color(white: 0.85) }
         return .white
     }
@@ -293,7 +293,7 @@ struct BlackKey: View {
 
     var body: some View {
         RoundedRectangle(cornerRadius: 3)
-            .fill(isPressed ? appState.themeAccent.opacity(0.7) : (isPlayable ? Color(white: 0.12) : Color(white: 0.4)))
+            .fill(isPressed ? appState.theme.accent.opacity(0.7) : (isPlayable ? Color(white: 0.12) : Color(white: 0.4)))
             .overlay(
                 RoundedRectangle(cornerRadius: 3)
                     .stroke(Color.black.opacity(0.6), lineWidth: 0.5)
