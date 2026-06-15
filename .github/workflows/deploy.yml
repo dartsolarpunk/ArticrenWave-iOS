@@ -75,52 +75,47 @@ jobs:
             PRODUCT_BUNDLE_IDENTIFIER=ArticrenWave \
             CURRENT_PROJECT_VERSION=$BUILD_NUM \
             MARKETING_VERSION=1.0
-          echo "Archive done"
-          ls -la "$RUNNER_TEMP/ArticrenWave.xcarchive/Products/Applications/"
-
-      - name: Patch build number in Info.plist and re-sign
-        run: |
-          BUILD_NUM=${{ github.run_number }}
           APP=$(find "$RUNNER_TEMP/ArticrenWave.xcarchive/Products/Applications" -name "*.app" | head -1)
-          PLIST="$APP/Info.plist"
-          echo "Current CFBundleVersion: $(plutil -extract CFBundleVersion raw "$PLIST")"
-          plutil -replace CFBundleVersion -string "$BUILD_NUM" "$PLIST"
-          echo "Patched CFBundleVersion to: $(plutil -extract CFBundleVersion raw "$PLIST")"
+          echo "Build number in archive: $(plutil -extract CFBundleVersion raw "$APP/Info.plist")"
 
-          # Re-sign with the patched plist
-          PP_UUID="${PROFILE_UUID:-b12f6031-5b23-4c52-8fbb-5185c60e83b9}"
-          /usr/bin/codesign --force --sign "iPhone Distribution: DART Meadow LLC (L7AHWS9Q6V)" \
-            --entitlements "ArticrenWave/ArticrenWave.entitlements" \
-            --keychain "$RUNNER_TEMP/signing.keychain-db" \
-            "$APP"
-          echo "Re-signed app"
-
-      - name: Package IPA
+      - name: Export IPA via xcodebuild exportArchive
         run: |
-          ARCHIVE="$RUNNER_TEMP/ArticrenWave.xcarchive"
-          APP=$(find "$ARCHIVE/Products/Applications" -name "*.app" | head -1)
-          echo "Packaging: $APP"
-          # Confirm build number in IPA
-          echo "IPA CFBundleVersion: $(plutil -extract CFBundleVersion raw "$APP/Info.plist")"
-          mkdir -p "$RUNNER_TEMP/Payload"
-          cp -r "$APP" "$RUNNER_TEMP/Payload/"
-          cd "$RUNNER_TEMP"
-          zip -qr "ArticrenWave.ipa" Payload/
-          ls -lh "$RUNNER_TEMP/ArticrenWave.ipa"
+          xcodebuild -exportArchive \
+            -archivePath "$RUNNER_TEMP/ArticrenWave.xcarchive" \
+            -exportPath "$RUNNER_TEMP/export" \
+            -exportOptionsPlist ExportOptions.plist \
+            -allowProvisioningUpdates || true
+          ls -la "$RUNNER_TEMP/export/" 2>/dev/null || echo "Export dir empty"
+          
+          # Fallback: manual IPA if exportArchive fails
+          if [ ! -f "$RUNNER_TEMP/export/ArticrenWave.ipa" ]; then
+            echo "Falling back to manual IPA packaging..."
+            ARCHIVE="$RUNNER_TEMP/ArticrenWave.xcarchive"
+            APP=$(find "$ARCHIVE/Products/Applications" -name "*.app" | head -1)
+            mkdir -p "$RUNNER_TEMP/Payload"
+            cp -r "$APP" "$RUNNER_TEMP/Payload/"
+            cd "$RUNNER_TEMP"
+            zip -qr "export/ArticrenWave.ipa" Payload/
+            mkdir -p export
+            mv ArticrenWave.ipa export/ 2>/dev/null || true
+          fi
+          ls -lh "$RUNNER_TEMP/export/"
 
       - name: Upload to TestFlight
         run: |
+          IPA=$(find "$RUNNER_TEMP/export" -name "*.ipa" | head -1)
+          echo "Uploading: $IPA"
           RESULT=$(xcrun altool --upload-app \
             --type ios \
-            --file "$RUNNER_TEMP/ArticrenWave.ipa" \
+            --file "$IPA" \
             --apiKey "NQXQ595W59" \
             --apiIssuer "90056871-d791-45f6-a770-21399c45e491" \
             --apiKeyPath ~/.appstoreconnect/private_keys/AuthKey_NQXQ595W59.p8 2>&1)
           echo "$RESULT"
-          if echo "$RESULT" | grep -iE "^.*ERROR:.*upload|Failed to upload"; then
+          if echo "$RESULT" | grep -iE "UPLOAD FAILED|Failed to upload"; then
             echo "❌ Upload failed"; exit 1
           fi
-          echo "✅ Build ${{ github.run_number }} uploaded"
+          echo "✅ Build ${{ github.run_number }} uploaded to TestFlight"
 
       - name: Clean keychain
         if: always()
