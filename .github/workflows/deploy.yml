@@ -20,13 +20,23 @@ jobs:
           sudo xcode-select -switch /Applications/Xcode_26.3.app
           xcodebuild -version
 
-      - name: Install xcodegen
+      - name: Patch build number into project.yml BEFORE xcodegen
         run: |
-          brew install xcodegen 2>/dev/null || brew upgrade xcodegen 2>/dev/null || true
-          xcodegen version
+          BUILD=${{ github.run_number }}
+          echo "Patching build number $BUILD into project.yml"
+          # Replace CURRENT_PROJECT_VERSION in project.yml
+          sed -i '' "s/CURRENT_PROJECT_VERSION: .*/CURRENT_PROJECT_VERSION: \"$BUILD\"/" project.yml
+          echo "project.yml CURRENT_PROJECT_VERSION now:"
+          grep "CURRENT_PROJECT_VERSION" project.yml
 
-      - name: Generate Xcode project
-        run: xcodegen generate --spec project.yml
+      - name: Install xcodegen
+        run: brew install xcodegen 2>/dev/null || brew upgrade xcodegen 2>/dev/null || true
+
+      - name: Generate Xcode project (with patched build number)
+        run: |
+          xcodegen generate --spec project.yml
+          echo "Verifying CURRENT_PROJECT_VERSION in generated pbxproj:"
+          grep "CURRENT_PROJECT_VERSION" ArticrenWave.xcodeproj/project.pbxproj | head -3
 
       - name: Install App Store Connect API key
         env:
@@ -67,6 +77,7 @@ jobs:
 
       - name: Archive
         run: |
+          BUILD=${{ github.run_number }}
           xcodebuild archive \
             -project ArticrenWave.xcodeproj \
             -scheme ArticrenWave \
@@ -74,25 +85,37 @@ jobs:
             -destination "generic/platform=iOS" \
             -archivePath "$RUNNER_TEMP/ArticrenWave.xcarchive" \
             OTHER_CODE_SIGN_FLAGS="--keychain $RUNNER_TEMP/signing.keychain-db" \
-            CURRENT_PROJECT_VERSION=${{ github.run_number }} \
+            CURRENT_PROJECT_VERSION=$BUILD \
             MARKETING_VERSION=1.0
+          
           APP=$(find "$RUNNER_TEMP/ArticrenWave.xcarchive/Products/Applications" -name "*.app" | head -1)
-          echo "Archived: $APP"
-          echo "CFBundleVersion: $(plutil -extract CFBundleVersion raw "$APP/Info.plist")"
+          BUILT_VER=$(plutil -extract CFBundleVersion raw "$APP/Info.plist")
+          echo "✅ Archive CFBundleVersion = $BUILT_VER (expected $BUILD)"
+          if [ "$BUILT_VER" != "$BUILD" ]; then
+            echo "⚠️  Version mismatch — force-patching Info.plist"
+            /usr/libexec/PlistBuddy -c "Set :CFBundleVersion $BUILD" "$APP/Info.plist"
+            echo "After patch: $(plutil -extract CFBundleVersion raw "$APP/Info.plist")"
+            # Re-sign after plist change
+            /usr/bin/codesign --force \
+              --sign "iPhone Distribution: DART Meadow LLC (L7AHWS9Q6V)" \
+              --entitlements "ArticrenWave/ArticrenWave.entitlements" \
+              --keychain "$RUNNER_TEMP/signing.keychain-db" \
+              "$APP"
+          fi
 
-      - name: Package and upload IPA
+      - name: Package IPA
         run: |
-          BUILD_NUM=${{ github.run_number }}
-          ARCHIVE="$RUNNER_TEMP/ArticrenWave.xcarchive"
-          APP=$(find "$ARCHIVE/Products/Applications" -name "*.app" | head -1)
-
+          APP=$(find "$RUNNER_TEMP/ArticrenWave.xcarchive/Products/Applications" -name "*.app" | head -1)
+          echo "Final CFBundleVersion: $(plutil -extract CFBundleVersion raw "$APP/Info.plist")"
           mkdir -p "$RUNNER_TEMP/Payload"
           cp -r "$APP" "$RUNNER_TEMP/Payload/"
           cd "$RUNNER_TEMP"
           zip -qr "ArticrenWave.ipa" Payload/
           ls -lh "$RUNNER_TEMP/ArticrenWave.ipa"
 
-          echo "Uploading build $BUILD_NUM..."
+      - name: Upload to TestFlight
+        run: |
+          echo "Uploading build ${{ github.run_number }}..."
           RESULT=$(xcrun altool --upload-app \
             --type ios \
             --file "$RUNNER_TEMP/ArticrenWave.ipa" \
@@ -100,10 +123,11 @@ jobs:
             --apiIssuer "90056871-d791-45f6-a770-21399c45e491" \
             --apiKeyPath ~/.appstoreconnect/private_keys/AuthKey_NQXQ595W59.p8 2>&1)
           echo "$RESULT"
-          if echo "$RESULT" | grep -iE "UPLOAD FAILED|Failed to upload"; then
-            echo "❌ Upload failed"; exit 1
+          # Fail on any ERROR line
+          if echo "$RESULT" | grep -iE "^.*ERROR:.*\(|UPLOAD FAILED|Failed to upload|duplicate"; then
+            echo "❌ Upload rejected"; exit 1
           fi
-          echo "✅ Build $BUILD_NUM uploaded"
+          echo "✅ Build ${{ github.run_number }} delivered to TestFlight"
 
       - name: Clean keychain
         if: always()
