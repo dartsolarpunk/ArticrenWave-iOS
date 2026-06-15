@@ -20,15 +20,6 @@ jobs:
           sudo xcode-select -switch /Applications/Xcode_26.3.app
           xcodebuild -version
 
-      - name: Set build number from run number
-        run: |
-          BUILD_NUMBER=${{ github.run_number }}
-          echo "BUILD_NUMBER=$BUILD_NUMBER" >> $GITHUB_ENV
-          echo "Using build number: $BUILD_NUMBER"
-          # Patch the pbxproj with the unique build number
-          sed -i '' "s/CURRENT_PROJECT_VERSION = [0-9]*;/CURRENT_PROJECT_VERSION = $BUILD_NUMBER;/g" \
-            ArticrenWave.xcodeproj/project.pbxproj
-
       - name: Install App Store Connect API key
         env:
           ASC_KEY: ${{ secrets.APP_STORE_CONNECT_API_KEY_CONTENT }}
@@ -65,10 +56,10 @@ jobs:
             plutil -extract UUID raw - 2>/dev/null || echo "b12f6031-5b23-4c52-8fbb-5185c60e83b9")
           cp "$PP_PATH" ~/Library/MobileDevice/Provisioning\ Profiles/"$PP_UUID.mobileprovision"
           echo "PROFILE_UUID=$PP_UUID" >> $GITHUB_ENV
-          echo "Profile UUID: $PP_UUID"
 
       - name: Archive
         run: |
+          BUILD_NUM=${{ github.run_number }}
           PP_FINAL="${PROFILE_UUID:-b12f6031-5b23-4c52-8fbb-5185c60e83b9}"
           xcodebuild archive \
             -project ArticrenWave.xcodeproj \
@@ -82,19 +73,40 @@ jobs:
             DEVELOPMENT_TEAM=L7AHWS9Q6V \
             OTHER_CODE_SIGN_FLAGS="--keychain $RUNNER_TEMP/signing.keychain-db" \
             PRODUCT_BUNDLE_IDENTIFIER=ArticrenWave \
-            CURRENT_PROJECT_VERSION=${{ github.run_number }}
-          ls -la "$RUNNER_TEMP/ArticrenWave.xcarchive"
+            CURRENT_PROJECT_VERSION=$BUILD_NUM \
+            MARKETING_VERSION=1.0
+          echo "Archive done"
+          ls -la "$RUNNER_TEMP/ArticrenWave.xcarchive/Products/Applications/"
 
-      - name: Export IPA
+      - name: Patch build number in Info.plist and re-sign
+        run: |
+          BUILD_NUM=${{ github.run_number }}
+          APP=$(find "$RUNNER_TEMP/ArticrenWave.xcarchive/Products/Applications" -name "*.app" | head -1)
+          PLIST="$APP/Info.plist"
+          echo "Current CFBundleVersion: $(plutil -extract CFBundleVersion raw "$PLIST")"
+          plutil -replace CFBundleVersion -string "$BUILD_NUM" "$PLIST"
+          echo "Patched CFBundleVersion to: $(plutil -extract CFBundleVersion raw "$PLIST")"
+
+          # Re-sign with the patched plist
+          PP_UUID="${PROFILE_UUID:-b12f6031-5b23-4c52-8fbb-5185c60e83b9}"
+          /usr/bin/codesign --force --sign "iPhone Distribution: DART Meadow LLC (L7AHWS9Q6V)" \
+            --entitlements "ArticrenWave/ArticrenWave.entitlements" \
+            --keychain "$RUNNER_TEMP/signing.keychain-db" \
+            "$APP"
+          echo "Re-signed app"
+
+      - name: Package IPA
         run: |
           ARCHIVE="$RUNNER_TEMP/ArticrenWave.xcarchive"
           APP=$(find "$ARCHIVE/Products/Applications" -name "*.app" | head -1)
           echo "Packaging: $APP"
+          # Confirm build number in IPA
+          echo "IPA CFBundleVersion: $(plutil -extract CFBundleVersion raw "$APP/Info.plist")"
           mkdir -p "$RUNNER_TEMP/Payload"
           cp -r "$APP" "$RUNNER_TEMP/Payload/"
           cd "$RUNNER_TEMP"
           zip -qr "ArticrenWave.ipa" Payload/
-          ls -la "$RUNNER_TEMP/ArticrenWave.ipa"
+          ls -lh "$RUNNER_TEMP/ArticrenWave.ipa"
 
       - name: Upload to TestFlight
         run: |
@@ -105,11 +117,10 @@ jobs:
             --apiIssuer "90056871-d791-45f6-a770-21399c45e491" \
             --apiKeyPath ~/.appstoreconnect/private_keys/AuthKey_NQXQ595W59.p8 2>&1)
           echo "$RESULT"
-          if echo "$RESULT" | grep -iE "ERROR:|FAILED|error code"; then
-            echo "❌ Upload failed"
-            exit 1
+          if echo "$RESULT" | grep -iE "^.*ERROR:.*upload|Failed to upload"; then
+            echo "❌ Upload failed"; exit 1
           fi
-          echo "✅ Upload accepted — build ${{ github.run_number }}"
+          echo "✅ Build ${{ github.run_number }} uploaded"
 
       - name: Clean keychain
         if: always()
