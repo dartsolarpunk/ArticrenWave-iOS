@@ -55,14 +55,14 @@ jobs:
           echo "$PROVISIONING_PROFILE_BASE64" | base64 --decode > "$PP_PATH"
           mkdir -p ~/Library/MobileDevice/Provisioning\ Profiles
           PP_UUID=$(security cms -D -i "$PP_PATH" 2>/dev/null | \
-            plutil -extract UUID raw - 2>/dev/null || echo "7496996c-32f7-4234-a8a2-b69d98453a63")
+            plutil -extract UUID raw - 2>/dev/null || echo "b12f6031-5b23-4c52-8fbb-5185c60e83b9")
           cp "$PP_PATH" ~/Library/MobileDevice/Provisioning\ Profiles/"$PP_UUID.mobileprovision"
           echo "PROFILE_UUID=$PP_UUID" >> $GITHUB_ENV
           echo "Profile UUID: $PP_UUID"
 
       - name: Archive
         run: |
-          PP_FINAL="${PROFILE_UUID:-7496996c-32f7-4234-a8a2-b69d98453a63}"
+          PP_FINAL="${PROFILE_UUID:-b12f6031-5b23-4c52-8fbb-5185c60e83b9}"
           xcodebuild archive \
             -project ArticrenWave.xcodeproj \
             -scheme ArticrenWave \
