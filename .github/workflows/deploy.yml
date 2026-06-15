@@ -60,7 +60,6 @@ jobs:
 
       - name: Archive
         run: |
-          BUILD_NUM=${{ github.run_number }}
           PP_FINAL="${PROFILE_UUID:-b12f6031-5b23-4c52-8fbb-5185c60e83b9}"
           xcodebuild archive \
             -project ArticrenWave.xcodeproj \
@@ -74,12 +73,10 @@ jobs:
             DEVELOPMENT_TEAM=L7AHWS9Q6V \
             OTHER_CODE_SIGN_FLAGS="--keychain $RUNNER_TEMP/signing.keychain-db" \
             PRODUCT_BUNDLE_IDENTIFIER=ArticrenWave \
-            CURRENT_PROJECT_VERSION=$BUILD_NUM \
+            CURRENT_PROJECT_VERSION=${{ github.run_number }} \
             MARKETING_VERSION=1.0
-          APP=$(find "$RUNNER_TEMP/ArticrenWave.xcarchive/Products/Applications" -name "*.app" | head -1)
-          echo "Archive CFBundleVersion: $(plutil -extract CFBundleVersion raw "$APP/Info.plist")"
 
-      - name: Export and patch build number
+      - name: Export, patch build number, re-sign, upload
         run: |
           BUILD_NUM=${{ github.run_number }}
 
@@ -92,56 +89,41 @@ jobs:
 
           IPA="$RUNNER_TEMP/export/ArticrenWave.ipa"
           if [ ! -f "$IPA" ]; then
-            # Manual packaging fallback
             ARCHIVE="$RUNNER_TEMP/ArticrenWave.xcarchive"
-            APP=$(find "$ARCHIVE/Products/Applications" -name "*.app" | head -1)
+            APP_SRC=$(find "$ARCHIVE/Products/Applications" -name "*.app" | head -1)
             mkdir -p "$RUNNER_TEMP/Payload"
-            cp -r "$APP" "$RUNNER_TEMP/Payload/"
+            cp -r "$APP_SRC" "$RUNNER_TEMP/Payload/"
             mkdir -p "$RUNNER_TEMP/export"
             cd "$RUNNER_TEMP" && zip -qr "export/ArticrenWave.ipa" Payload/
           fi
 
-          # Unzip IPA, patch build number, re-sign, rezip
+          # Unzip IPA, patch build number, re-sign with project entitlements, rezip
           mkdir -p "$RUNNER_TEMP/ipa_work"
           cd "$RUNNER_TEMP/ipa_work"
-          unzip -q "$RUNNER_TEMP/export/ArticrenWave.ipa"
+          unzip -q "$IPA"
           APP=$(find . -name "*.app" | head -1)
-          
-          echo "Before patch: $(plutil -extract CFBundleVersion raw "$APP/Info.plist")"
+
+          echo "CFBundleVersion before: $(plutil -extract CFBundleVersion raw "$APP/Info.plist")"
           /usr/libexec/PlistBuddy -c "Set :CFBundleVersion $BUILD_NUM" "$APP/Info.plist"
-          echo "After patch: $(plutil -extract CFBundleVersion raw "$APP/Info.plist")"
+          echo "CFBundleVersion after:  $(plutil -extract CFBundleVersion raw "$APP/Info.plist")"
 
-          # Copy provisioning profile into app
+          # Replace embedded.mobileprovision
           cp "$RUNNER_TEMP/articrenwave.mobileprovision" "$APP/embedded.mobileprovision"
 
-          # Re-sign using the project entitlements only (Sign In with Apple)
-          /usr/bin/codesign --force --sign "iPhone Distribution: DART Meadow LLC (L7AHWS9Q6V)" \
-            --entitlements "ArticrenWave/ArticrenWave.entitlements" \
-            --keychain "$KEYCHAIN_PATH" \
-            "$APP"
-          
-          # Copy provisioning profile back into app
-          cp "$RUNNER_TEMP/articrenwave.mobileprovision" "$APP/embedded.mobileprovision"
-
-          # Re-sign with entitlements from profile
-          ENTS=$(security cms -D -i "$RUNNER_TEMP/articrenwave.mobileprovision" 2>/dev/null | \
-            plutil -extract Entitlements xml1 -o - - 2>/dev/null)
-          echo "$ENTS" > "$RUNNER_TEMP/profile_ents.plist"
-
-          /usr/bin/codesign --force --sign "iPhone Distribution: DART Meadow LLC (L7AHWS9Q6V)" \
-            --entitlements "$RUNNER_TEMP/profile_ents.plist" \
+          # Re-sign with ONLY Sign In with Apple entitlements (no iCloud dev keys)
+          /usr/bin/codesign --force \
+            --sign "iPhone Distribution: DART Meadow LLC (L7AHWS9Q6V)" \
+            --entitlements "$GITHUB_WORKSPACE/ArticrenWave/ArticrenWave.entitlements" \
             --keychain "$KEYCHAIN_PATH" \
             "$APP"
 
           # Repackage
-          rm "$RUNNER_TEMP/export/ArticrenWave.ipa"
-          zip -qr "$RUNNER_TEMP/export/ArticrenWave.ipa" Payload/
-          echo "Final IPA size: $(ls -lh "$RUNNER_TEMP/export/ArticrenWave.ipa" | awk '{print $5}')"
+          rm -f "$IPA"
+          zip -qr "$IPA" Payload/
+          echo "Repacked IPA: $(ls -lh "$IPA" | awk '{print $5}')"
 
-      - name: Upload to TestFlight
-        run: |
-          IPA="$RUNNER_TEMP/export/ArticrenWave.ipa"
-          echo "Uploading build ${{ github.run_number }}..."
+          # Upload
+          echo "Uploading build $BUILD_NUM..."
           RESULT=$(xcrun altool --upload-app \
             --type ios \
             --file "$IPA" \
@@ -152,7 +134,7 @@ jobs:
           if echo "$RESULT" | grep -iE "UPLOAD FAILED|Failed to upload"; then
             echo "❌ Upload failed"; exit 1
           fi
-          echo "✅ Build ${{ github.run_number }} uploaded"
+          echo "✅ Build $BUILD_NUM uploaded to TestFlight"
 
       - name: Clean keychain
         if: always()
