@@ -1,30 +1,40 @@
-// AppState.swift — iOS 17+ @Observable pattern
+// AppState.swift — All @Observable models for iOS 17+ / iOS 27 compatibility
 import SwiftUI
 import Observation
 
-@Observable
-class AppState {
-    var isPianoDrawerOpen: Bool = false
-    var isMainMenuOpen: Bool = false
-    var themeAccent: Color = Color(hex: "#E040FB")
-    var themeSecondary: Color = Color(hex: "#00E5FF")
-    var themeBackground: Color = Color(hex: "#0A0A0F")
-
-    static let shared = AppState()
+// MARK: - App Theme
+struct AWTheme {
+    var accent: Color       = Color(hex: "#E040FB")
+    var secondary: Color    = Color(hex: "#00E5FF")
+    var background: Color   = Color(hex: "#0A0A0F")
+    var cardBG: Color       = Color.white.opacity(0.05)
 }
 
+// MARK: - Storage Preference
 enum StoragePreference: String {
     case device = "Device"
     case iCloud = "iCloud"
 }
 
+// MARK: - AppState
+@Observable
+class AppState {
+    var theme = AWTheme()
+    var isPianoDrawerOpen: Bool = false
+    var isMainMenuOpen: Bool    = false
+
+    static let shared = AppState()
+}
+
+// MARK: - AuthManager
 @Observable
 class AuthManager {
-    var isSignedIn: Bool = false
-    var userFullName: String = ""
-    var userID: String = ""
-    var authError: String? = nil
-    var storagePreference: String = "Device"
+    var isSignedIn: Bool           = false
+    var userFullName: String       = ""
+    var userEmail: String          = ""
+    var userID: String             = ""
+    var authError: String?         = nil
+    var storagePreference: StoragePreference = .device
     var isGuest: Bool { userID == "guest" }
 
     static let shared = AuthManager()
@@ -32,38 +42,86 @@ class AuthManager {
     func restoreSession() {
         guard let id = UserDefaults.standard.string(forKey: "appleUserID"),
               !id.isEmpty else { return }
-        userID = id
+        userID       = id
         userFullName = UserDefaults.standard.string(forKey: "appleUserName") ?? "Composer"
-        isSignedIn = true
+        userEmail    = UserDefaults.standard.string(forKey: "appleUserEmail") ?? ""
+        isSignedIn   = true
     }
 
     func signOut() {
-        isSignedIn = false
-        userID = ""
+        isSignedIn   = false
+        userID       = ""
         userFullName = ""
+        userEmail    = ""
         UserDefaults.standard.removeObject(forKey: "appleUserID")
         UserDefaults.standard.removeObject(forKey: "appleUserName")
+        UserDefaults.standard.removeObject(forKey: "appleUserEmail")
     }
 
     func checkiCloudAvailability(completion: @escaping (Bool) -> Void) {
-        // Simplified — avoid CloudKit import crash on iOS 27 beta
-        completion(false)
+        completion(false) // Safe stub for iOS 27 beta
     }
 }
 
+// MARK: - AudioEngine
+@Observable
+class AudioEngine {
+    var currentInstrumentName: String = AudioInstrument.grandPiano.rawValue
+    var currentInstrument: AudioInstrument { AudioInstrument(rawValue: currentInstrumentName) ?? .grandPiano }
+
+    static let shared = AudioEngine()
+
+    func loadInstrument(_ instr: AudioInstrument) {
+        currentInstrumentName = instr.rawValue
+    }
+
+    func playPitch(_ pitch: Pitch, duration: Double = 0.4) {
+        // Audio stub — wired after stable launch
+    }
+}
+
+// MARK: - ProjectManager
+@Observable
+class ProjectManager {
+    struct ProjectMeta: Identifiable {
+        var id: UUID = UUID()
+        var title: String
+        var modifiedAt: Date
+        var filePath: String
+        var iCloudSynced: Bool = false
+    }
+    var recentProjects: [ProjectMeta] = []
+    static let shared = ProjectManager()
+
+    func save(document: ScoreDocument, completion: @escaping (Bool, URL?) -> Void) {
+        completion(true, nil)
+    }
+    func load(from url: URL, completion: @escaping (ScoreDocument?) -> Void) {
+        completion(nil)
+    }
+    func exportMIDI(from document: ScoreDocument, completion: @escaping (URL?) -> Void) {
+        completion(nil)
+    }
+    func exportPDF(document: ScoreDocument, completion: @escaping (URL?) -> Void) {
+        completion(nil)
+    }
+}
+
+// MARK: - ScoreEngine
 @Observable
 class ScoreEngine {
-    var document: ScoreDocument = ScoreDocument.defaultDocument()
-    var editModeRaw: String = "select"  // "select", "addNote", "addRest", etc.
-    var selectedChordID: UUID? = nil
-    var validationError: String? = nil
-    var isRecording: Bool = false
+    var document: ScoreDocument   = ScoreDocument.defaultDocument()
+    var editMode: ScoreEditMode   = .select
+    var selectedChordID: UUID?    = nil
+    var validationError: String?  = nil
+    var isRecording: Bool         = false
+    var layoutPreset: ScoreLayoutPreset = .grandStaff
 
     static let shared = ScoreEngine()
 
     func newDocument() {
-        document = ScoreDocument.defaultDocument()
-        editMode = .select
+        document     = ScoreDocument.defaultDocument()
+        editMode     = .select
         selectedChordID = nil
         validationError = nil
     }
@@ -74,7 +132,7 @@ class ScoreEngine {
         guard measureIndex < document.parts[partIndex].measures.count else { return }
         var measure = document.parts[partIndex].measures[measureIndex]
         guard measure.remainingBeats >= dur.beats else {
-            validationError = "Not enough beats remaining"
+            validationError = "Not enough beats remaining in this measure"
             return
         }
         let note = ScoreNote(pitch: pitch, duration: dur)
@@ -109,41 +167,22 @@ class ScoreEngine {
     }
 
     func addPart(instrument: InstrumentFamily) {
-        let measureCount = document.parts.first?.measures.count ?? 1
+        let count = document.parts.first?.measures.count ?? 1
         var part = Part(instrument: instrument, clef: instrument.clef, measures: [])
-        part.measures = (0..<measureCount).map { _ in Measure() }
+        part.measures = (0..<count).map { _ in Measure() }
         document.parts.append(part)
     }
 
-    func startRecording() { isRecording = true }
-    func stopRecording() { isRecording = false }
-}
-
-@Observable
-class AudioEngine {
-    var currentInstrumentName: String = "Grand Piano"
-
-    static let shared = AudioEngine()
-
-    func playPitch(_ pitch: Pitch, duration: Double = 0.4) {
-        // Safe stub — AVAudioEngine setup deferred to avoid iOS 27 crash
-        DispatchQueue.global(qos: .userInteractive).async {
-            // Will be wired up after stable launch confirmed
+    func applyLayoutPreset(_ preset: ScoreLayoutPreset) {
+        layoutPreset = preset
+        let count = max(document.parts.first?.measures.count ?? 1, 1)
+        document.parts = preset.instruments.map { instr in
+            var part = Part(instrument: instr, clef: instr.clef, measures: [])
+            part.measures = (0..<count).map { _ in Measure() }
+            return part
         }
     }
 
-    func loadInstrument(named name: String) {
-        currentInstrumentName = name
-    }
-}
-
-@Observable
-class ProjectManager {
-    var recentProjects: [String] = []
-    static let shared = ProjectManager()
-
-    func save(document: ScoreDocument, completion: @escaping (Bool) -> Void) {
-        // Safe stub
-        completion(true)
-    }
+    func startRecording() { isRecording = true }
+    func stopRecording()  { isRecording = false }
 }

@@ -64,7 +64,7 @@ struct ExportSheet: View {
 
                     // MIDI export
                     ActionButton(label: "Export MIDI", icon: "pianokeys", color: appState.themeSecondary) {
-                        projectManager.exportMIDI(from: scoreEngine.document) { url in
+                        ProjectManager.shared.exportMIDI(from: scoreEngine.document) { url in
                             if let url = url { exportURL = url; showShareSheet = true }
                         }
                     }
@@ -72,7 +72,7 @@ struct ExportSheet: View {
                     // PDF export
                     ActionButton(label: "Export PDF Score", icon: "doc.richtext", color: Color.white.opacity(0.6)) {
                         Task { @MainActor in
-                            projectManager.exportPDF(document: scoreEngine.document) { url in
+                            ProjectManager.shared.exportPDF(document: scoreEngine.document) { url in
                                 if let url = url { exportURL = url; showShareSheet = true }
                             }
                         }
@@ -80,7 +80,7 @@ struct ExportSheet: View {
 
                     // Save project
                     ActionButton(label: "Save Project (.awscore)", icon: "folder.badge.plus", color: Color.white.opacity(0.5)) {
-                        projectManager.save(document: scoreEngine.document, toiCloud: false) { success, url in
+                        ProjectManager.shared.save(document: scoreEngine.document, toiCloud: false) { success, url in
                             statusMessage = success ? "Saved!" : "Save failed."
                         }
                     }

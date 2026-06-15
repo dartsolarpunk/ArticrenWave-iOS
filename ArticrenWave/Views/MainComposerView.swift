@@ -57,8 +57,8 @@ struct DrawerPullTab: View {
                         .font(.system(size: 11, weight: .semibold))
                     Text(appState.isPianoDrawerOpen ? "Hide Piano" : "Piano")
                         .font(.system(size: 12, weight: .semibold, design: .rounded))
-                    if audioEngine.currentInstrument != .grandPiano {
-                        Text("· \(audioEngine.currentInstrument.rawValue)")
+                    if audioEngine.currentInstrumentName != AudioInstrument.grandPiano.rawValue {
+                        Text("· \(audioEngine.currentInstrumentName)")
                             .font(.system(size: 11))
                             .foregroundColor(.white.opacity(0.5))
                     }
