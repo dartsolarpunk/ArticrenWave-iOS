@@ -55,14 +55,14 @@ jobs:
           echo "$PROVISIONING_PROFILE_BASE64" | base64 --decode > "$PP_PATH"
           mkdir -p ~/Library/MobileDevice/Provisioning\ Profiles
           PP_UUID=$(security cms -D -i "$PP_PATH" 2>/dev/null | \
-            plutil -extract UUID raw - 2>/dev/null || echo "4c7bcf9c-1825-46a9-a591-0d039c74b1db")
+            plutil -extract UUID raw - 2>/dev/null || echo "7496996c-32f7-4234-a8a2-b69d98453a63")
           cp "$PP_PATH" ~/Library/MobileDevice/Provisioning\ Profiles/"$PP_UUID.mobileprovision"
           echo "PROFILE_UUID=$PP_UUID" >> $GITHUB_ENV
           echo "Profile UUID: $PP_UUID"
 
       - name: Archive
         run: |
-          PP_FINAL="${PROFILE_UUID:-4c7bcf9c-1825-46a9-a591-0d039c74b1db}"
+          PP_FINAL="${PROFILE_UUID:-7496996c-32f7-4234-a8a2-b69d98453a63}"
           xcodebuild archive \
             -project ArticrenWave.xcodeproj \
             -scheme ArticrenWave \
@@ -74,7 +74,7 @@ jobs:
             PROVISIONING_PROFILE="$PP_FINAL" \
             DEVELOPMENT_TEAM=L7AHWS9Q6V \
             OTHER_CODE_SIGN_FLAGS="--keychain $RUNNER_TEMP/signing.keychain-db" \
-            PRODUCT_BUNDLE_IDENTIFIER=ArticrenWaveAppStore
+            PRODUCT_BUNDLE_IDENTIFIER=ArticrenWave
           ls -la "$RUNNER_TEMP/ArticrenWave.xcarchive"
 
       - name: Export IPA

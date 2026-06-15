@@ -3,13 +3,10 @@
   "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0">
 <dict>
-    <!-- Sign In with Apple -->
     <key>com.apple.developer.applesignin</key>
     <array>
         <string>Default</string>
     </array>
-
-    <!-- iCloud Documents -->
     <key>com.apple.developer.icloud-container-identifiers</key>
     <array>
         <string>iCloud.ArticrenWaveAppStore</string>
@@ -22,15 +19,6 @@
     <array>
         <string>iCloud.ArticrenWaveAppStore</string>
     </array>
-
-    <!-- Push Notifications (for future use) -->
-    <key>aps-environment</key>
-    <string>development</string>
-
-    <!-- In-App Purchases (enabled in App Store Connect) -->
-    <!-- Note: No entitlement key needed; StoreKit handles this automatically -->
-
-    <!-- Network access -->
     <key>com.apple.security.network.client</key>
     <true/>
 </dict>
