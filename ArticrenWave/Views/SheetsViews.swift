@@ -3,10 +3,10 @@ import SwiftUI
 
 // MARK: - Export Sheet
 struct ExportSheet: View {
-    @EnvironmentObject var appState: AppState
-    @EnvironmentObject var scoreEngine: ScoreEngine
-    @EnvironmentObject var audioEngine: AudioEngine
-    @EnvironmentObject var projectManager: ProjectManager
+    @Environment(AppState.self) private var appState
+    @Environment(ScoreEngine.self) private var scoreEngine
+    @Environment(AudioEngine.self) private var audioEngine
+    @Environment(ProjectManager.self) private var projectManager
     @Environment(\.dismiss) var dismiss
 
     @State private var selectedFormat: AudioExportFormat = .wav
@@ -17,14 +17,14 @@ struct ExportSheet: View {
     var body: some View {
         NavigationView {
             ZStack {
-                appState.theme.background.ignoresSafeArea()
+                appStateBackground.ignoresSafeArea()
 
                 VStack(spacing: 20) {
                     // Format picker
                     VStack(alignment: .leading, spacing: 12) {
                         Label("Audio Export", systemImage: "waveform.path.ecg")
                             .font(.system(size: 13, weight: .semibold))
-                            .foregroundColor(appState.theme.accent)
+                            .foregroundColor(appStateAccent)
 
                         ForEach(AudioExportFormat.allCases, id: \.self) { format in
                             RadioRow(label: format.rawValue, isSelected: selectedFormat == format) {
@@ -40,13 +40,13 @@ struct ExportSheet: View {
                     if audioEngine.isExporting {
                         VStack(spacing: 8) {
                             ProgressView(value: audioEngine.exportProgress)
-                                .tint(appState.theme.accent)
+                                .tint(appStateAccent)
                             Text("Rendering audio…")
                                 .font(.system(size: 12))
                                 .foregroundColor(.white.opacity(0.5))
                         }
                     } else {
-                        ActionButton(label: "Export Audio", icon: "music.quarternote.3", color: appState.theme.accent) {
+                        ActionButton(label: "Export Audio", icon: "music.quarternote.3", color: appStateAccent) {
                             audioEngine.renderScoreToAudio(
                                 document: scoreEngine.document,
                                 format: selectedFormat
@@ -63,7 +63,7 @@ struct ExportSheet: View {
                     }
 
                     // MIDI export
-                    ActionButton(label: "Export MIDI", icon: "pianokeys", color: appState.theme.secondaryAccent) {
+                    ActionButton(label: "Export MIDI", icon: "pianokeys", color: appStateSecondary) {
                         projectManager.exportMIDI(from: scoreEngine.document) { url in
                             if let url = url { exportURL = url; showShareSheet = true }
                         }
@@ -88,7 +88,7 @@ struct ExportSheet: View {
                     if !statusMessage.isEmpty {
                         Text(statusMessage)
                             .font(.system(size: 12))
-                            .foregroundColor(appState.theme.accent)
+                            .foregroundColor(appStateAccent)
                     }
 
                     Spacer()
@@ -100,7 +100,7 @@ struct ExportSheet: View {
             .toolbar {
                 ToolbarItem(placement: .navigationBarTrailing) {
                     Button("Done") { dismiss() }
-                        .foregroundColor(appState.theme.accent)
+                        .foregroundColor(appStateAccent)
                 }
             }
         }
@@ -113,7 +113,7 @@ struct ExportSheet: View {
 }
 
 struct RadioRow: View {
-    @EnvironmentObject var appState: AppState
+    @Environment(AppState.self) private var appState
     let label: String
     let isSelected: Bool
     let action: () -> Void
@@ -122,7 +122,7 @@ struct RadioRow: View {
         Button(action: action) {
             HStack {
                 Image(systemName: isSelected ? "largecircle.fill.circle" : "circle")
-                    .foregroundColor(isSelected ? appState.theme.accent : .white.opacity(0.35))
+                    .foregroundColor(isSelected ? appStateAccent : .white.opacity(0.35))
                 Text(label)
                     .font(.system(size: 13))
                     .foregroundColor(.white.opacity(0.8))
@@ -157,8 +157,8 @@ struct ActionButton: View {
 
 // MARK: - Layout Picker Sheet
 struct LayoutPickerSheet: View {
-    @EnvironmentObject var appState: AppState
-    @EnvironmentObject var scoreEngine: ScoreEngine
+    @Environment(AppState.self) private var appState
+    @Environment(ScoreEngine.self) private var scoreEngine
     @Environment(\.dismiss) var dismiss
 
     @State private var showInstrumentPicker = false
@@ -166,14 +166,14 @@ struct LayoutPickerSheet: View {
     var body: some View {
         NavigationView {
             ZStack {
-                appState.theme.background.ignoresSafeArea()
+                appStateBackground.ignoresSafeArea()
 
                 VStack(spacing: 16) {
                     // Presets
                     VStack(alignment: .leading, spacing: 10) {
                         Label("Layout Presets", systemImage: "music.note.list")
                             .font(.system(size: 13, weight: .semibold))
-                            .foregroundColor(appState.theme.accent)
+                            .foregroundColor(appStateAccent)
 
                         ForEach(ScoreLayoutPreset.allCases, id: \.self) { preset in
                             Button {
@@ -192,13 +192,13 @@ struct LayoutPickerSheet: View {
                                     Spacer()
                                     if scoreEngine.layoutPreset == preset {
                                         Image(systemName: "checkmark")
-                                            .foregroundColor(appState.theme.accent)
+                                            .foregroundColor(appStateAccent)
                                     }
                                 }
                                 .padding(12)
                                 .background(
                                     RoundedRectangle(cornerRadius: 10)
-                                        .fill(scoreEngine.layoutPreset == preset ? appState.theme.accent.opacity(0.1) : Color.white.opacity(0.04))
+                                        .fill(scoreEngine.layoutPreset == preset ? appStateAccent.opacity(0.1) : Color.white.opacity(0.04))
                                 )
                             }
                         }
@@ -211,7 +211,7 @@ struct LayoutPickerSheet: View {
                     VStack(alignment: .leading, spacing: 10) {
                         Label("Add Instrument", systemImage: "plus.circle")
                             .font(.system(size: 13, weight: .semibold))
-                            .foregroundColor(appState.theme.accent)
+                            .foregroundColor(appStateAccent)
 
                         ScrollView(.horizontal, showsIndicators: false) {
                             HStack(spacing: 8) {
@@ -245,7 +245,7 @@ struct LayoutPickerSheet: View {
             .toolbar {
                 ToolbarItem(placement: .navigationBarTrailing) {
                     Button("Done") { dismiss() }
-                        .foregroundColor(appState.theme.accent)
+                        .foregroundColor(appStateAccent)
                 }
             }
         }
@@ -254,8 +254,8 @@ struct LayoutPickerSheet: View {
 
 // MARK: - Tempo Sheet
 struct TempoSheet: View {
-    @EnvironmentObject var appState: AppState
-    @EnvironmentObject var scoreEngine: ScoreEngine
+    @Environment(AppState.self) private var appState
+    @Environment(ScoreEngine.self) private var scoreEngine
     @Environment(\.dismiss) var dismiss
 
     @State private var tempo: Double = 80
@@ -263,7 +263,7 @@ struct TempoSheet: View {
     var body: some View {
         NavigationView {
             ZStack {
-                appState.theme.background.ignoresSafeArea()
+                appStateBackground.ignoresSafeArea()
 
                 VStack(spacing: 24) {
                     // BPM display
@@ -278,12 +278,12 @@ struct TempoSheet: View {
 
                         Text(tempoLabel(Int(tempo)))
                             .font(.system(size: 13, design: .rounded))
-                            .foregroundColor(appState.theme.accent)
+                            .foregroundColor(appStateAccent)
                     }
                     .padding(.top, 20)
 
                     Slider(value: $tempo, in: 40...208, step: 1)
-                        .tint(appState.theme.accent)
+                        .tint(appStateAccent)
                         .padding(.horizontal, 24)
 
                     // Common tempos
@@ -298,12 +298,12 @@ struct TempoSheet: View {
                                     Text(tempoLabel(bpm))
                                         .font(.system(size: 9))
                                 }
-                                .foregroundColor(Int(tempo) == bpm ? appState.theme.accent : .white.opacity(0.6))
+                                .foregroundColor(Int(tempo) == bpm ? appStateAccent : .white.opacity(0.6))
                                 .frame(maxWidth: .infinity)
                                 .padding(.vertical, 10)
                                 .background(
                                     RoundedRectangle(cornerRadius: 8)
-                                        .fill(Int(tempo) == bpm ? appState.theme.accent.opacity(0.12) : Color.white.opacity(0.04))
+                                        .fill(Int(tempo) == bpm ? appStateAccent.opacity(0.12) : Color.white.opacity(0.04))
                                 )
                             }
                         }
@@ -321,7 +321,7 @@ struct TempoSheet: View {
                         scoreEngine.document.tempo = Int(tempo)
                         dismiss()
                     }
-                    .foregroundColor(appState.theme.accent)
+                    .foregroundColor(appStateAccent)
                     .fontWeight(.semibold)
                 }
             }

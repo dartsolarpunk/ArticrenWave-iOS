@@ -4,8 +4,8 @@ import SwiftUI
 
 // MARK: - Score Editor Container
 struct ScoreEditorView: View {
-    @EnvironmentObject var appState:    AppState
-    @EnvironmentObject var scoreEngine: ScoreEngine
+    @Environment(AppState.self) private var appState
+    @Environment(ScoreEngine.self) private var scoreEngine
 
     var body: some View {
         VStack(spacing: 0) {
@@ -16,26 +16,26 @@ struct ScoreEditorView: View {
             if let err = scoreEngine.validationError {
                 Text(err)
                     .font(.system(size: 11, design: .monospaced))
-                    .foregroundColor(appState.theme.accent)
+                    .foregroundColor(appStateAccent)
                     .padding(.horizontal, 12)
                     .padding(.vertical, 4)
                     .frame(maxWidth: .infinity, alignment: .leading)
-                    .background(appState.theme.accent.opacity(0.1))
+                    .background(appStateAccent.opacity(0.1))
                     .onTapGesture { scoreEngine.validationError = nil }
             }
 
             ScrollView([.horizontal, .vertical], showsIndicators: true) {
                 SafeScoreCanvas()
             }
-            .background(appState.theme.background)
+            .background(appStateBackground)
         }
     }
 }
 
 // MARK: - Safe Score Canvas
 struct SafeScoreCanvas: View {
-    @EnvironmentObject var appState:    AppState
-    @EnvironmentObject var scoreEngine: ScoreEngine
+    @Environment(AppState.self) private var appState
+    @Environment(ScoreEngine.self) private var scoreEngine
 
     let lineSpacing:  CGFloat = 9
     let measureWidth: CGFloat = 200
@@ -66,8 +66,8 @@ struct SafeScoreCanvas: View {
 
 // MARK: - Safe Staff Row
 struct SafeStaffRow: View {
-    @EnvironmentObject var appState:    AppState
-    @EnvironmentObject var scoreEngine: ScoreEngine
+    @Environment(AppState.self) private var appState
+    @Environment(ScoreEngine.self) private var scoreEngine
 
     let partIndex:   Int
     let part:        Part
@@ -139,8 +139,8 @@ struct SafeClefView: View {
 
 // MARK: - Safe Measure View
 struct SafeMeasureView: View {
-    @EnvironmentObject var appState:    AppState
-    @EnvironmentObject var scoreEngine: ScoreEngine
+    @Environment(AppState.self) private var appState
+    @Environment(ScoreEngine.self) private var scoreEngine
 
     let measure:      Measure
     let partIndex:    Int
@@ -238,7 +238,7 @@ struct SafeChordView: View {
     let lineSpacing: CGFloat
     let isSelected:  Bool
 
-    @EnvironmentObject var appState: AppState
+    @Environment(AppState.self) private var appState
 
     var headW: CGFloat { lineSpacing * 1.2 }
     var headH: CGFloat { lineSpacing * 0.9 }
@@ -259,11 +259,11 @@ struct SafeChordView: View {
                 // Note head
                 Ellipse()
                     .fill(chord.duration.isFilled
-                          ? (isSelected ? appState.theme.accent : Color.white)
+                          ? (isSelected ? appStateAccent : Color.white)
                           : Color.clear)
                     .overlay(
                         Ellipse().stroke(
-                            isSelected ? appState.theme.accent : Color.white,
+                            isSelected ? appStateAccent : Color.white,
                             lineWidth: 1.2
                         )
                     )
@@ -280,7 +280,7 @@ struct SafeChordView: View {
                     p.move(to:    CGPoint(x: xPos + 4, y: stemY))
                     p.addLine(to: CGPoint(x: xPos + 4, y: stemTop))
                 }
-                .stroke(isSelected ? appState.theme.accent : Color.white,
+                .stroke(isSelected ? appStateAccent : Color.white,
                         lineWidth: 1.2)
 
                 // Tails for eighth/sixteenth
@@ -294,7 +294,7 @@ struct SafeChordView: View {
                             control2: CGPoint(x: xPos + 16, y: y0 + 6)
                         )
                     }
-                    .stroke(isSelected ? appState.theme.accent : Color.white,
+                    .stroke(isSelected ? appStateAccent : Color.white,
                             lineWidth: 1.2)
                 }
             }
@@ -327,8 +327,8 @@ struct SafeRestView: View {
 
 // MARK: - Safe Tap Zone
 struct SafeTapZone: View {
-    @EnvironmentObject var scoreEngine: ScoreEngine
-    @EnvironmentObject var appState:    AppState
+    @Environment(ScoreEngine.self) private var scoreEngine
+    @Environment(AppState.self) private var appState
 
     let partIndex:    Int
     let measureIndex: Int
@@ -357,12 +357,12 @@ struct SafeTapZone: View {
                 let sp    = staffPosFor(y: pos.y)
                 let pitch = pitchFor(staffPos: sp)
                 Circle()
-                    .fill(appState.theme.accent.opacity(0.45))
+                    .fill(appStateAccent.opacity(0.45))
                     .frame(width: lineSpacing * 1.2, height: lineSpacing * 0.9)
                     .position(pos)
                 Text(pitch.displayName)
                     .font(.system(size: 9))
-                    .foregroundColor(appState.theme.accent)
+                    .foregroundColor(appStateAccent)
                     .position(x: pos.x, y: pos.y - 14)
             }
         }

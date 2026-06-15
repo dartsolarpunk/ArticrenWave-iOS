@@ -1,4 +1,4 @@
-// ContentView.swift — Not used, AWRootView is the entry point
+// ContentView.swift — unused stub
 import SwiftUI
 struct ContentView: View {
     var body: some View { EmptyView() }

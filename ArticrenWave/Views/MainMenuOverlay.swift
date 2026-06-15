@@ -3,10 +3,10 @@ import SwiftUI
 import PhotosUI
 
 struct MainMenuOverlay: View {
-    @EnvironmentObject var appState: AppState
-    @EnvironmentObject var authManager: AuthManager
-    @EnvironmentObject var projectManager: ProjectManager
-    @EnvironmentObject var scoreEngine: ScoreEngine
+    @Environment(AppState.self) private var appState
+    @Environment(AuthManager.self) private var authManager
+    @Environment(ProjectManager.self) private var projectManager
+    @Environment(ScoreEngine.self) private var scoreEngine
 
     @State private var showNewDocAlert = false
     @State private var showProfileSection = true
@@ -56,12 +56,12 @@ struct MainMenuOverlay: View {
                                             .clipShape(Circle())
                                     } else {
                                         Circle()
-                                            .fill(appState.theme.accent.opacity(0.2))
+                                            .fill(appStateAccent.opacity(0.2))
                                             .frame(width: 52, height: 52)
                                             .overlay(
                                                 Text(authManager.userFullName.prefix(1))
                                                     .font(.system(size: 22, weight: .semibold))
-                                                    .foregroundColor(appState.theme.accent)
+                                                    .foregroundColor(appStateAccent)
                                             )
                                     }
                                     PhotosPicker(selection: $avatarItem, matching: .images) {
@@ -80,7 +80,7 @@ struct MainMenuOverlay: View {
                                     if authManager.isGuest {
                                         Text("GUEST MODE")
                                             .font(.system(size: 8, weight: .bold, design: .monospaced))
-                                            .foregroundColor(appState.theme.secondaryAccent.opacity(0.8))
+                                            .foregroundColor(appStateSecondary.opacity(0.8))
                                             .kerning(1)
                                     }
                                     if !authManager.userEmail.isEmpty {
@@ -90,7 +90,7 @@ struct MainMenuOverlay: View {
                                     }
                                     Text("Storage: \(authManager.storagePreference.rawValue)")
                                         .font(.system(size: 10))
-                                        .foregroundColor(appState.theme.accent.opacity(0.7))
+                                        .foregroundColor(appStateAccent.opacity(0.7))
                                 }
                                 Spacer()
                             }
@@ -169,13 +169,13 @@ struct MainMenuOverlay: View {
                                                 .frame(width: 28, height: 28)
                                                 .overlay(
                                                     Circle().stroke(
-                                                        appState.theme == theme ? .white : .clear,
+                                                        appState == theme ? .white : .clear,
                                                         lineWidth: 2
                                                     )
                                                 )
                                             Text(theme.rawValue.components(separatedBy: " ").last ?? "")
                                                 .font(.system(size: 8))
-                                                .foregroundColor(appState.theme == theme ? .white : .white.opacity(0.4))
+                                                .foregroundColor(appState == theme ? .white : .white.opacity(0.4))
                                         }
                                     }
                                 }
@@ -198,7 +198,7 @@ struct MainMenuOverlay: View {
                                 .foregroundColor(.white.opacity(0.35))
                             Text("Powered by LEATR Neural Architecture")
                                 .font(.system(size: 10, weight: .medium))
-                                .foregroundColor(appState.theme.accent.opacity(0.6))
+                                .foregroundColor(appStateAccent.opacity(0.6))
                         }
                         .padding(.horizontal, 16)
                         .padding(.vertical, 10)
@@ -239,7 +239,7 @@ struct MainMenuOverlay: View {
 }
 
 struct MenuSection<Content: View>: View {
-    @EnvironmentObject var appState: AppState
+    @Environment(AppState.self) private var appState
     let title: String
     @Binding var isExpanded: Bool
     @ViewBuilder let content: () -> Content
@@ -254,7 +254,7 @@ struct MenuSection<Content: View>: View {
                 HStack {
                     Text(title)
                         .font(.system(size: 10, weight: .semibold))
-                        .foregroundColor(appState.theme.accent.opacity(0.6))
+                        .foregroundColor(appStateAccent.opacity(0.6))
                         .tracking(1.5)
                     Spacer()
                     Image(systemName: isExpanded ? "chevron.up" : "chevron.down")
@@ -273,7 +273,7 @@ struct MenuSection<Content: View>: View {
 }
 
 struct MenuActionRow: View {
-    @EnvironmentObject var appState: AppState
+    @Environment(AppState.self) private var appState
     let icon: String
     let label: String
     let action: () -> Void
@@ -283,7 +283,7 @@ struct MenuActionRow: View {
             HStack(spacing: 12) {
                 Image(systemName: icon)
                     .font(.system(size: 14))
-                    .foregroundColor(appState.theme.accent.opacity(0.8))
+                    .foregroundColor(appStateAccent.opacity(0.8))
                     .frame(width: 20)
                 Text(label)
                     .font(.system(size: 13))
@@ -300,9 +300,9 @@ struct MenuActionRow: View {
 }
 
 struct RecentProjectRow: View {
-    @EnvironmentObject var appState: AppState
-    @EnvironmentObject var projectManager: ProjectManager
-    @EnvironmentObject var scoreEngine: ScoreEngine
+    @Environment(AppState.self) private var appState
+    @Environment(ProjectManager.self) private var projectManager
+    @Environment(ScoreEngine.self) private var scoreEngine
 
     let meta: ProjectManager.ProjectMeta
 

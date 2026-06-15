@@ -2,9 +2,9 @@
 import SwiftUI
 
 struct MainComposerView: View {
-    @EnvironmentObject var appState: AppState
-    @EnvironmentObject var scoreEngine: ScoreEngine
-    @EnvironmentObject var audioEngine: AudioEngine
+    @Environment(AppState.self) private var appState
+    @Environment(ScoreEngine.self) private var scoreEngine
+    @Environment(AudioEngine.self) private var audioEngine
 
     var body: some View {
         GeometryReader { geo in
@@ -41,8 +41,8 @@ struct MainComposerView: View {
 
 // MARK: - Drawer Pull Tab
 struct DrawerPullTab: View {
-    @EnvironmentObject var appState: AppState
-    @EnvironmentObject var audioEngine: AudioEngine
+    @Environment(AppState.self) private var appState
+    @Environment(AudioEngine.self) private var audioEngine
 
     var body: some View {
         VStack(spacing: 0) {
@@ -79,10 +79,10 @@ struct DrawerPullTab: View {
 
 // MARK: - Composer Toolbar
 struct ComposerToolbar: View {
-    @EnvironmentObject var appState: AppState
-    @EnvironmentObject var scoreEngine: ScoreEngine
-    @EnvironmentObject var projectManager: ProjectManager
-    @EnvironmentObject var audioEngine: AudioEngine
+    @Environment(AppState.self) private var appState
+    @Environment(ScoreEngine.self) private var scoreEngine
+    @Environment(ProjectManager.self) private var projectManager
+    @Environment(AudioEngine.self) private var audioEngine
 
     @State private var showExportSheet = false
     @State private var showLayoutPicker = false
@@ -142,25 +142,17 @@ struct ComposerToolbar: View {
         }
         .padding(.horizontal, 8)
         .frame(height: 50)
-        .background(appState.theme.background.opacity(0.97))
+        .background(appStateBackground.opacity(0.97))
         .overlay(Rectangle().fill(Color.white.opacity(0.06)).frame(height: 1), alignment: .bottom)
         // Sheets — must pass environmentObjects explicitly through sheet presentation
         .sheet(isPresented: $showExportSheet) {
             ExportSheet()
-                .environmentObject(appState)
-                .environmentObject(scoreEngine)
-                .environmentObject(audioEngine)
-                .environmentObject(projectManager)
         }
         .sheet(isPresented: $showLayoutPicker) {
             LayoutPickerSheet()
-                .environmentObject(appState)
-                .environmentObject(scoreEngine)
         }
         .sheet(isPresented: $showTempoSheet) {
             TempoSheet()
-                .environmentObject(appState)
-                .environmentObject(scoreEngine)
         }
     }
 }

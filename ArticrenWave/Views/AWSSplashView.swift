@@ -5,7 +5,7 @@ import SwiftUI
 struct AWSSplashView: View {
     let onDone: () -> Void
 
-    @EnvironmentObject var appState: AppState
+    @Environment(AppState.self) private var appState
     @State private var logoScale:   CGFloat = 0.65
     @State private var logoOpacity: Double  = 0
     @State private var titleOpacity: Double = 0
@@ -37,14 +37,14 @@ struct AWSSplashView: View {
                 ZStack {
                     // Outer pulse ring
                     Circle()
-                        .stroke(appState.theme.accent.opacity(0.07), lineWidth: 1)
+                        .stroke(appStateAccent.opacity(0.07), lineWidth: 1)
                         .frame(width: ringPulse ? 240 : 200, height: ringPulse ? 240 : 200)
                         .animation(.easeInOut(duration: 2.6).repeatForever(autoreverses: true),
                                    value: ringPulse)
 
                     // Mid ring
                     Circle()
-                        .stroke(appState.theme.accent.opacity(0.18), lineWidth: 1.2)
+                        .stroke(appStateAccent.opacity(0.18), lineWidth: 1.2)
                         .frame(width: 168, height: 168)
 
                     // Logo fill
@@ -62,8 +62,8 @@ struct AWSSplashView: View {
                             Circle()
                                 .stroke(
                                     LinearGradient(
-                                        colors: [appState.theme.accent.opacity(0.6),
-                                                 appState.theme.secondaryAccent.opacity(0.4)],
+                                        colors: [appStateAccent.opacity(0.6),
+                                                 appStateSecondary.opacity(0.4)],
                                         startPoint: .topLeading, endPoint: .bottomTrailing
                                     ),
                                     lineWidth: 1.5
@@ -92,7 +92,7 @@ struct AWSSplashView: View {
 
                     Text("AR CLASSICAL SCORE WRITING")
                         .font(.system(size: 10, weight: .semibold, design: .monospaced))
-                        .foregroundColor(appState.theme.accent.opacity(0.75))
+                        .foregroundColor(appStateAccent.opacity(0.75))
                         .kerning(2.5)
                         .opacity(tagOpacity)
 
@@ -108,7 +108,7 @@ struct AWSSplashView: View {
                 // Boot line
                 Text(bootText)
                     .font(.system(size: 10, design: .monospaced))
-                    .foregroundColor(appState.theme.accent.opacity(0.35))
+                    .foregroundColor(appStateAccent.opacity(0.35))
                     .opacity(tagOpacity)
                     .padding(.bottom, 54)
                     .animation(.easeInOut(duration: 0.3), value: bootText)

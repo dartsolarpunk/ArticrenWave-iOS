@@ -2,9 +2,9 @@
 import SwiftUI
 
 struct PianoDrawerView: View {
-    @EnvironmentObject var appState: AppState
-    @EnvironmentObject var audioEngine: AudioEngine
-    @EnvironmentObject var scoreEngine: ScoreEngine
+    @Environment(AppState.self) private var appState
+    @Environment(AudioEngine.self) private var audioEngine
+    @Environment(ScoreEngine.self) private var scoreEngine
 
     @State private var jumpOctave: Int = 4  // middle C octave
 
@@ -39,8 +39,8 @@ struct PianoDrawerView: View {
                     .padding(.horizontal, 10)
                     .padding(.vertical, 6)
                     .background(
-                        Capsule().fill(appState.theme.accent.opacity(0.15))
-                            .overlay(Capsule().stroke(appState.theme.accent.opacity(0.4), lineWidth: 1))
+                        Capsule().fill(appStateAccent.opacity(0.15))
+                            .overlay(Capsule().stroke(appStateAccent.opacity(0.4), lineWidth: 1))
                     )
                 }
 
@@ -56,11 +56,11 @@ struct PianoDrawerView: View {
                         jumpOctave = oct
                     }
                     .font(.system(size: 12, weight: jumpOctave == oct ? .bold : .regular))
-                    .foregroundColor(jumpOctave == oct ? appState.theme.accent : .white.opacity(0.5))
+                    .foregroundColor(jumpOctave == oct ? appStateAccent : .white.opacity(0.5))
                     .frame(width: 24, height: 24)
                     .background(
                         Circle()
-                            .fill(jumpOctave == oct ? appState.theme.accent.opacity(0.15) : .clear)
+                            .fill(jumpOctave == oct ? appStateAccent.opacity(0.15) : .clear)
                     )
                 }
 
@@ -69,9 +69,9 @@ struct PianoDrawerView: View {
                     jumpOctave = 8 // special: scroll to sigma view
                 }
                 .font(.system(size: 13, weight: .bold))
-                .foregroundColor(jumpOctave == 8 ? appState.theme.secondaryAccent : .white.opacity(0.5))
+                .foregroundColor(jumpOctave == 8 ? appStateSecondary : .white.opacity(0.5))
                 .frame(width: 26, height: 26)
-                .background(Circle().fill(jumpOctave == 8 ? appState.theme.secondaryAccent.opacity(0.15) : .clear))
+                .background(Circle().fill(jumpOctave == 8 ? appStateSecondary.opacity(0.15) : .clear))
             }
             .padding(.horizontal, 12)
             .padding(.bottom, 8)
@@ -92,9 +92,9 @@ struct PianoDrawerView: View {
 
 // MARK: - Piano Scroll View
 struct PianoScrollView: View {
-    @EnvironmentObject var audioEngine: AudioEngine
-    @EnvironmentObject var scoreEngine: ScoreEngine
-    @EnvironmentObject var appState: AppState
+    @Environment(AudioEngine.self) private var audioEngine
+    @Environment(ScoreEngine.self) private var scoreEngine
+    @Environment(AppState.self) private var appState
 
     @Binding var jumpOctave: Int
 
@@ -198,9 +198,9 @@ extension AudioInstrument {
 
 // MARK: - White Key
 struct WhiteKey: View {
-    @EnvironmentObject var audioEngine: AudioEngine
-    @EnvironmentObject var scoreEngine: ScoreEngine
-    @EnvironmentObject var appState: AppState
+    @Environment(AudioEngine.self) private var audioEngine
+    @Environment(ScoreEngine.self) private var scoreEngine
+    @Environment(AppState.self) private var appState
 
     let pitch: Pitch
     let width: CGFloat
@@ -226,19 +226,19 @@ struct WhiteKey: View {
                 // Middle C markers
                 if isMiddleC {
                     Circle()
-                        .fill(appState.theme.accent)
+                        .fill(appStateAccent)
                         .frame(width: 6, height: 6)
                     Text("C4")
                         .font(.system(size: 6, weight: .bold))
-                        .foregroundColor(appState.theme.accent)
+                        .foregroundColor(appStateAccent)
                 }
                 if isMiddleCBass {
                     Circle()
-                        .fill(appState.theme.secondaryAccent)
+                        .fill(appStateSecondary)
                         .frame(width: 6, height: 6)
                     Text("C3")
                         .font(.system(size: 6, weight: .bold))
-                        .foregroundColor(appState.theme.secondaryAccent)
+                        .foregroundColor(appStateSecondary)
                 }
                 if let label = octaveLabel, !isMiddleC && !isMiddleCBass {
                     Text(label)
@@ -272,7 +272,7 @@ struct WhiteKey: View {
     }
 
     var keyColor: Color {
-        if isPressed { return appState.theme.accent.opacity(0.35) }
+        if isPressed { return appStateAccent.opacity(0.35) }
         if !isPlayable { return Color(white: 0.85) }
         return .white
     }
@@ -280,9 +280,9 @@ struct WhiteKey: View {
 
 // MARK: - Black Key
 struct BlackKey: View {
-    @EnvironmentObject var audioEngine: AudioEngine
-    @EnvironmentObject var scoreEngine: ScoreEngine
-    @EnvironmentObject var appState: AppState
+    @Environment(AudioEngine.self) private var audioEngine
+    @Environment(ScoreEngine.self) private var scoreEngine
+    @Environment(AppState.self) private var appState
 
     let pitch: Pitch
     let width: CGFloat
@@ -293,7 +293,7 @@ struct BlackKey: View {
 
     var body: some View {
         RoundedRectangle(cornerRadius: 3)
-            .fill(isPressed ? appState.theme.accent.opacity(0.7) : (isPlayable ? Color(white: 0.12) : Color(white: 0.4)))
+            .fill(isPressed ? appStateAccent.opacity(0.7) : (isPlayable ? Color(white: 0.12) : Color(white: 0.4)))
             .overlay(
                 RoundedRectangle(cornerRadius: 3)
                     .stroke(Color.black.opacity(0.6), lineWidth: 0.5)

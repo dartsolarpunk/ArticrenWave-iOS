@@ -4,8 +4,8 @@ import SwiftUI
 import AuthenticationServices
 
 struct AWWelcomeView: View {
-    @EnvironmentObject var appState:    AppState
-    @EnvironmentObject var authManager: AuthManager
+    @Environment(AppState.self) private var appState
+    @Environment(AuthManager.self) private var authManager
     @State private var ringPulse        = false
     @State private var storageChoice: AuthManager.StoragePreference = .device
     @State private var showStoragePicker = false
@@ -26,7 +26,7 @@ struct AWWelcomeView: View {
                 // Logo orb
                 ZStack {
                     Circle()
-                        .stroke(appState.theme.accent.opacity(0.07), lineWidth: 1)
+                        .stroke(appStateAccent.opacity(0.07), lineWidth: 1)
                         .frame(width: ringPulse ? 210 : 178, height: ringPulse ? 210 : 178)
                         .animation(.easeInOut(duration: 2.5).repeatForever(autoreverses: true),
                                    value: ringPulse)
@@ -36,8 +36,8 @@ struct AWWelcomeView: View {
                     Circle()
                         .stroke(
                             LinearGradient(
-                                colors: [appState.theme.accent.opacity(0.5),
-                                         appState.theme.secondaryAccent.opacity(0.3)],
+                                colors: [appStateAccent.opacity(0.5),
+                                         appStateSecondary.opacity(0.3)],
                                 startPoint: .topLeading, endPoint: .bottomTrailing
                             ),
                             lineWidth: 1.5
@@ -61,7 +61,7 @@ struct AWWelcomeView: View {
                         .kerning(5)
                     Text("AR Classical Score Writing")
                         .font(.system(size: 11, weight: .medium, design: .monospaced))
-                        .foregroundColor(appState.theme.accent.opacity(0.7))
+                        .foregroundColor(appStateAccent.opacity(0.7))
                         .kerning(2)
                     Text("DART Meadow · Radical Deepscale")
                         .font(.system(size: 9, design: .monospaced))
@@ -79,22 +79,16 @@ struct AWWelcomeView: View {
                             guard let cred = auth.credential as? ASAuthorizationAppleIDCredential else { return }
                             let name = [cred.fullName?.givenName, cred.fullName?.familyName]
                                 .compactMap { $0 }.joined(separator: " ")
+                            let finalName = name.isEmpty ? (UserDefaults.standard.string(forKey: "appleUserName") ?? "Composer") : name
+                            UserDefaults.standard.set(cred.user, forKey: "appleUserID")
+                            UserDefaults.standard.set(finalName, forKey: "appleUserName")
                             DispatchQueue.main.async {
-                                authManager.userID       = cred.user
-                                authManager.userFullName = name.isEmpty
-                                    ? (UserDefaults.standard.string(forKey: "appleUserName") ?? "Composer")
-                                    : name
-                                authManager.userEmail    = cred.email
-                                    ?? (UserDefaults.standard.string(forKey: "appleUserEmail") ?? "")
-                                authManager.isSignedIn   = true
-                                UserDefaults.standard.set(cred.user, forKey: "appleUserID")
-                                if !name.isEmpty { UserDefaults.standard.set(name, forKey: "appleUserName") }
-                                if let e = cred.email, !e.isEmpty {
-                                    UserDefaults.standard.set(e, forKey: "appleUserEmail")
-                                }
+                                AuthManager.shared.userID       = cred.user
+                                AuthManager.shared.userFullName = finalName
+                                AuthManager.shared.isSignedIn   = true
                             }
                         case .failure(let err):
-                            authManager.authError = err.localizedDescription
+                            AuthManager.shared.authError = err.localizedDescription
                         }
                     }
                     .frame(height: 56)
@@ -151,7 +145,7 @@ struct AWWelcomeView: View {
                 }
                 .padding(.horizontal, 28)
 
-                if let err = authManager.authError {
+                if let err = AuthManager.shared.authError {
                     Text(err)
                         .font(.system(size: 11))
                         .foregroundColor(.red.opacity(0.8))
@@ -169,7 +163,7 @@ struct AWWelcomeView: View {
             }
         }
         .onAppear {
-            authManager.checkiCloudAvailability { available in iCloudAvailable = available }
+            AuthManager.shared.checkiCloudAvailability { available in iCloudAvailable = available }
         }
     }
 }
@@ -227,7 +221,7 @@ struct AWAppleSignInButton: UIViewRepresentable {
 }
 
 struct AWStorageChip: View {
-    @EnvironmentObject var appState: AppState
+    @Environment(AppState.self) private var appState
     let label: String
     let icon: String
     let isSelected: Bool
@@ -243,13 +237,13 @@ struct AWStorageChip: View {
                     Image(systemName: "checkmark").font(.system(size: 10, weight: .bold))
                 }
             }
-            .foregroundColor(isSelected ? appState.theme.accent : .white.opacity(isDisabled ? 0.2 : 0.55))
+            .foregroundColor(isSelected ? appStateAccent : .white.opacity(isDisabled ? 0.2 : 0.55))
             .frame(maxWidth: .infinity).padding(.vertical, 10)
             .background(
                 RoundedRectangle(cornerRadius: 10)
-                    .fill(isSelected ? appState.theme.accent.opacity(0.12) : Color.white.opacity(0.05))
+                    .fill(isSelected ? appStateAccent.opacity(0.12) : Color.white.opacity(0.05))
                     .overlay(RoundedRectangle(cornerRadius: 10)
-                        .stroke(isSelected ? appState.theme.accent.opacity(0.5) : Color.clear, lineWidth: 1))
+                        .stroke(isSelected ? appStateAccent.opacity(0.5) : Color.clear, lineWidth: 1))
             )
         }
         .disabled(isDisabled)

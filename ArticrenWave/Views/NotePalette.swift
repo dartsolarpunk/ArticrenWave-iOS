@@ -2,8 +2,8 @@
 import SwiftUI
 
 struct NotePalette: View {
-    @EnvironmentObject var appState: AppState
-    @EnvironmentObject var scoreEngine: ScoreEngine
+    @Environment(AppState.self) private var appState
+    @Environment(ScoreEngine.self) private var scoreEngine
 
     var body: some View {
         ScrollView(.horizontal, showsIndicators: false) {
@@ -111,7 +111,7 @@ struct NotePalette: View {
 }
 
 struct PaletteButton: View {
-    @EnvironmentObject var appState: AppState
+    @Environment(AppState.self) private var appState
 
     let label: String
     let sublabel: String
@@ -120,7 +120,7 @@ struct PaletteButton: View {
     let action: () -> Void
 
     var activeColor: Color {
-        accent ?? appState.theme.accent
+        accent ?? appStateAccent
     }
 
     var body: some View {
