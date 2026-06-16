@@ -3,12 +3,20 @@ import SwiftUI
 
 @main
 struct ArticrenWaveApp: App {
-    // @Observable singletons — no StateObject/EnvironmentObject needed
-    private let appState      = AppState.shared
-    private let authManager   = AuthManager.shared
-    private let scoreEngine   = ScoreEngine.shared
-    private let audioEngine   = AudioEngine.shared
-    private let projectManager  = ProjectManager.shared
+    private let appState       = AppState.shared
+    private let authManager    = AuthManager.shared
+    private let scoreEngine    = ScoreEngine.shared
+    private let audioEngine    = AudioEngine.shared
+    private let projectManager = ProjectManager.shared
+
+    init() {
+        // Restore saved accent color
+        if let hex = UserDefaults.standard.string(forKey: "aw_accent_hex") {
+            AppState.shared.theme.accent = Color(hex: hex)
+        }
+        // Pre-warm audio engine
+        AWAudioPlayer.shared.setup()
+    }
 
     var body: some Scene {
         WindowGroup {

@@ -94,8 +94,12 @@ struct AWWelcomeView: View {
                                 }
                             }
                         case .failure(let err):
-                            if (err as NSError).code != 1001 { // 1001 = user cancelled
-                                authManager.authError = err.localizedDescription
+                            let code = (err as NSError).code
+                            // 1001 = user cancelled, 1000 = TestFlight/unknown (not a real error)
+                            if code != 1001 && code != 1000 {
+                                authManager.authError = "Sign in unavailable. Please try Continue as Guest."
+                            } else {
+                                authManager.authError = nil
                             }
                         }
                     }

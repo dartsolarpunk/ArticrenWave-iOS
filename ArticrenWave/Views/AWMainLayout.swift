@@ -15,9 +15,11 @@ struct AWMainLayout: View {
     var body: some View {
         GeometryReader { geo in
             ZStack(alignment: .leading) {
+                Color(hex: "#080910").ignoresSafeArea()
 
                 // ── Main content (shifts right when drawer open) ──
                 MainComposerView()
+                    .frame(width: geo.size.width, height: geo.size.height)
                     .offset(x: showDrawer ? drawerWidth : 0)
                     .animation(.spring(response: 0.35, dampingFraction: 0.85), value: showDrawer)
                     .disabled(showDrawer)
@@ -523,7 +525,6 @@ struct AWDrawerProfileTab: View {
 struct AWDrawerSettingsTab: View {
     @Environment(AppState.self) private var appState
 
-    @State private var selectedHex: String = "#E040FB"
     var accentOptions: [(String, String)] = [
         ("Magenta", "#E040FB"), ("Cyan", "#00E5FF"), ("Green", "#00E676"),
         ("Red", "#FF1744"), ("Blue", "#00B4FF"), ("Gold", "#FFD600"),
@@ -537,13 +538,15 @@ struct AWDrawerSettingsTab: View {
                     ForEach(accentOptions, id: \.0) { name, hex in
                         Button {
                             appState.theme.accent = Color(hex: hex)
-                            selectedHex = hex
+                            UserDefaults.standard.set(hex, forKey: "aw_accent_hex")
                         } label: {
                             VStack(spacing: 5) {
+                                let savedHex = UserDefaults.standard.string(forKey: "aw_accent_hex") ?? "#E040FB"
                                 Circle()
                                     .fill(Color(hex: hex))
                                     .frame(width: 32, height: 32)
-                                    .overlay(Circle().stroke(.white, lineWidth: selectedHex == hex ? 2.5 : 0))
+                                    .overlay(Circle().stroke(.white, lineWidth: 2.5)
+                                        .opacity(savedHex == hex ? 1 : 0))
                                 Text(name)
                                     .font(.system(size: 8))
                                     .foregroundColor(.white.opacity(0.4))

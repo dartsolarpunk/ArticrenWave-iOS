@@ -10,8 +10,6 @@ struct ScoreEditorView: View {
 
     var body: some View {
         VStack(spacing: 0) {
-            NotePalette().frame(height: 62)
-
             if let err = scoreEngine.validationError {
                 HStack(spacing: 8) {
                     Image(systemName: "exclamationmark.triangle.fill")

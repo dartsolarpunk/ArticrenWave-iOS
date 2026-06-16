@@ -95,17 +95,8 @@ struct MainComposerView: View {
                 .environment(AppState.shared)
                 .environment(ScoreEngine.shared)
         }
-        // Main menu overlay
-        .overlay {
-            if showMainMenu {
-                MainMenuOverlay()
-                    .transition(.move(edge: .leading))
-                    .zIndex(100)
-            }
-        }
-        .animation(.spring(response: 0.35, dampingFraction: 0.85), value: showMainMenu)
+        // Menu is handled by AWMainLayout drawer — just sync state
         .onChange(of: showMainMenu) { _, val in appState.isMainMenuOpen = val }
-        .onChange(of: appState.isMainMenuOpen) { _, val in showMainMenu = val }
     }
 
     var pianoHeight: CGFloat {
