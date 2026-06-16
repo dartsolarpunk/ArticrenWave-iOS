@@ -161,9 +161,10 @@ class AWAudioPlayer {
                     v = (ph < 0.5 ? 1.0 : -1.0) * env * 0.28
                 default:                                   // piano — sine+harmonics
                     let d = exp(-t * 3.5)
-                    v = (sin(2*.pi*freq*t)
-                       + sin(2*.pi*freq*2*t) * 0.30
-                       + sin(2*.pi*freq*3*t) * 0.10) * d * 0.40
+                    let s1 = sin(2.0 * Double.pi * freq * t)
+                    let s2 = sin(2.0 * Double.pi * freq * 2.0 * t) * 0.30
+                    let s3 = sin(2.0 * Double.pi * freq * 3.0 * t) * 0.10
+                    v = (s1 + s2 + s3) * d * 0.40
                 }
                 ptr[i] = Float(v)
             }
