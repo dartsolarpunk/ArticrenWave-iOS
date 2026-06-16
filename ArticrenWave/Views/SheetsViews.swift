@@ -144,27 +144,33 @@ struct ExportSheet: View {
         isExporting = true
         let format = formats[formatIndex]
         let doc = scoreEngine.document
+
         if format == "MIDI" {
-                let midiData = AWAudioPlayer.shared.buildMIDI(from: doc)
-                let url = FileManager.default.temporaryDirectory
-                    .appendingPathComponent(doc.title + ".mid")
-                try? midiData.write(to: url)
-                exportURL = url; showShareSheet = true
-                isExporting = false; statusMessage = "MIDI exported"
+            let midiData = AWAudioPlayer.shared.buildMIDI(from: doc)
+            let url = FileManager.default.temporaryDirectory
+                .appendingPathComponent(doc.title + ".mid")
+            try? midiData.write(to: url)
+            exportURL = url
+            showShareSheet = true
+            isExporting = false
+            statusMessage = "MIDI exported"
+            return
+        }
+
+        AWAudioPlayer.shared.exportWAV(document: doc) { wavURL in
+            guard let wavURL else {
+                self.isExporting = false
+                self.statusMessage = "Export failed"
                 return
             }
-            AWAudioPlayer.shared.exportWAV(document: doc) { wavURL in
-                guard let wavURL else {
-                    self.isExporting = false; self.statusMessage = "Export failed"; return
-                }
-                self.exportURL = wavURL; self.showShareSheet = true
-                self.isExporting = false
-                self.statusMessage = format == "WAV" ? "WAV exported" : format + " exported"
-            }
+            self.exportURL = wavURL
+            self.showShareSheet = true
+            self.isExporting = false
+            self.statusMessage = format == "WAV" ? "WAV exported" : format + " exported"
         }
     }
 
-        func exportPDF() {
+    func exportPDF() {
         let doc = scoreEngine.document
         let pageSize = pdfLandscape
             ? CGRect(x: 0, y: 0, width: 1122, height: 794)   // A4 landscape 96dpi
