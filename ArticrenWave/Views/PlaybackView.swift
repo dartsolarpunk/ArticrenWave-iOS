@@ -5,7 +5,7 @@ import SwiftUI
 struct PlaybackBarView: View {
     @Environment(AppState.self)    private var appState
     @Environment(ScoreEngine.self) private var scoreEngine
-    @State private var audio = AWAudioPlayer.shared
+    private var audio: AWAudioPlayer { AWAudioPlayer.shared }
     @State private var isScrubbing = false
     @State private var scrubProg: Double = 0
 
@@ -120,7 +120,7 @@ struct PlaybackBarView: View {
 // MARK: - Score Playback Cursor (overlaid on the score canvas)
 struct PlaybackCursorView: View {
     @Environment(AppState.self) private var appState
-    @State private var audio = AWAudioPlayer.shared
+    private var audio: AWAudioPlayer { AWAudioPlayer.shared }
 
     let measureWidth: CGFloat
     let rowHeight: CGFloat

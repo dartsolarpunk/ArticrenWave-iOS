@@ -10,21 +10,6 @@ struct ScoreEditorView: View {
 
     var body: some View {
         VStack(spacing: 0) {
-            if let err = scoreEngine.validationError {
-                HStack(spacing: 8) {
-                    Image(systemName: "exclamationmark.triangle.fill")
-                        .foregroundColor(.orange).font(.system(size: 11))
-                    Text(err).font(.system(size: 11)).foregroundColor(.orange.opacity(0.9))
-                    Spacer()
-                    Button { scoreEngine.validationError = nil } label: {
-                        Image(systemName: "xmark").font(.system(size: 10)).foregroundColor(.white.opacity(0.4))
-                    }
-                }
-                .padding(.horizontal, 14).padding(.vertical, 8)
-                .background(Color.orange.opacity(0.12))
-                .overlay(Rectangle().fill(Color.orange.opacity(0.3)).frame(height:1), alignment: .bottom)
-            }
-
             // Pinch + pan canvas
             GeometryReader { geo in
                 ScrollView([.horizontal, .vertical], showsIndicators: true) {
@@ -51,7 +36,7 @@ struct ScoreEditorView: View {
 struct ScorePageView: View {
     @Environment(AppState.self)    private var appState
     @Environment(ScoreEngine.self) private var scoreEngine
-    @State private var audio = AWAudioPlayer.shared
+    private var audio: AWAudioPlayer { AWAudioPlayer.shared }
     @State private var isEditingTitle    = false
     @State private var isEditingComposer = false
     @State private var composerName: String = ""
@@ -461,18 +446,39 @@ struct DraggableMeasureView: View {
     }
 
     func moveChord(chord: Chord, newPitch: Pitch) {
+        // Calculate the staff position delta from the original first note to new pitch
+        guard let firstNote = chord.notes.first else { return }
+        let delta = newPitch.staffPosition - firstNote.pitch.staffPosition
+
         for mi in 0..<scoreEngine.document.parts[partIndex].measures.count {
             for ci in 0..<scoreEngine.document.parts[partIndex].measures[mi].contents.count {
                 if case .chord(var c) = scoreEngine.document.parts[partIndex].measures[mi].contents[ci],
                    c.id == chord.id {
+                    // Move each note by the same interval
                     c.notes = c.notes.map { note in
-                        var n = note; n.pitch = newPitch; return n
+                        var n = note
+                        let newSP = note.pitch.staffPosition + delta
+                        n.pitch = pitchFromStaffPos(newSP)
+                        return n
                     }
                     scoreEngine.document.parts[partIndex].measures[mi].contents[ci] = .chord(c)
+                    scoreEngine.selectedChordID = chord.id
                     return
                 }
             }
         }
+    }
+
+    func pitchFromStaffPos(_ staffPos: Int) -> Pitch {
+        let whites: [PitchClass] = [.C, .D, .E, .F, .G, .A, .B]
+        // staffPos 0 = C4 (middle C), 1 = D4, 7 = C5, -7 = C3 etc.
+        let totalSteps = staffPos + 28  // offset to keep positive
+        let oct  = totalSteps / 7 - 4 + 4  // centre around oct 4
+        let idx  = ((totalSteps % 7) + 7) % 7
+        return Pitch(
+            pitchClass: whites[max(0, min(6, idx))],
+            octave:     max(1, min(7, oct))
+        )
     }
 
     func updateLassoSelection() {

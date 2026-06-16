@@ -143,36 +143,24 @@ struct ExportSheet: View {
     func exportAudio() {
         isExporting = true
         let format = formats[formatIndex]
-        if format == "MIDI" {
-            let midiData = AWAudioPlayer.shared.buildMIDI(from: scoreEngine.document)
-            let url = FileManager.default.temporaryDirectory
-                .appendingPathComponent(scoreEngine.document.title + ".mid")
-            try? midiData.write(to: url)
-            exportURL = url
-            showShareSheet = true
-            isExporting = false
-            statusMessage = "MIDI exported"
-            return
-        }
-        AWAudioPlayer.shared.exportWAV(document: scoreEngine.document) { wavURL in
-            guard let wavURL else {
-                self.isExporting = false
-                self.statusMessage = "Export failed"
+        let doc = scoreEngine.document
+        Task { @MainActor in
+            if format == "MIDI" {
+                let midiData = AWAudioPlayer.shared.buildMIDI(from: doc)
+                let url = FileManager.default.temporaryDirectory
+                    .appendingPathComponent(doc.title + ".mid")
+                try? midiData.write(to: url)
+                exportURL = url; showShareSheet = true
+                isExporting = false; statusMessage = "MIDI exported"
                 return
             }
-            if format == "WAV" {
-                self.exportURL = wavURL
-                self.showShareSheet = true
-                self.isExporting = false
-                self.statusMessage = "WAV exported"
-            } else {
-                // Convert to M4A (AAC) for MP3/M4A
-                AWAudioPlayer.shared.exportM4A(wavURL: wavURL) { m4aURL in
-                    self.exportURL = m4aURL ?? wavURL
-                    self.showShareSheet = true
-                    self.isExporting = false
-                    self.statusMessage = format + " exported"
+            AWAudioPlayer.shared.exportWAV(document: doc) { wavURL in
+                guard let wavURL else {
+                    self.isExporting = false; self.statusMessage = "Export failed"; return
                 }
+                self.exportURL = wavURL; self.showShareSheet = true
+                self.isExporting = false
+                self.statusMessage = format == "WAV" ? "WAV exported" : format + " exported"
             }
         }
     }

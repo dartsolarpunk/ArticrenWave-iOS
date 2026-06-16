@@ -105,7 +105,12 @@ class AudioEngine {
     func loadInstrumentNamed(_ name: String) { currentInstrumentName = name }
 
     func playPitch(_ pitch: Pitch, duration: Double = 0.4) {
-        // Audio stub — wired after stable launch
+        Task { @MainActor in
+            AWAudioPlayer.shared.playPitch(pitch, instrumentName: currentInstrumentName, duration: duration)
+        }
+    }
+    func preload() {
+        Task { @MainActor in AWAudioPlayer.shared.setup() }
     }
 }
 
