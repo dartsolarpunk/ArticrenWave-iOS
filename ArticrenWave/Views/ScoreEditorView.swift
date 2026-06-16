@@ -327,30 +327,43 @@ struct DraggableMeasureView: View {
                     .contentShape(Rectangle().size(CGSize(width: 40, height: 80))
                         .offset(x: xFor(chord.beatPosition) - 20, y: 0))
                     .gesture(
-                        DragGesture(minimumDistance: 4)
+                        DragGesture(minimumDistance: 6)
                             .onChanged { val in
+                                // Allow drag in move mode OR when a note is already selected
+                                let isMoveMode = { if case .move = scoreEngine.editMode { return true }; return false }()
+                                let isSelected = scoreEngine.selectedChordID == chord.id
+                                guard isMoveMode || isSelected else { return }
+
                                 if draggingID == nil {
                                     draggingID = chord.id
                                     scoreEngine.selectedChordID = chord.id
+                                    dragOffset = .zero
                                 }
                                 dragOffset = val.translation
-                                let sp = staffPosAt(y: yFor(chord.notes.first?.pitch.staffPosition ?? 0) + val.translation.height)
+
+                                // Calculate ghost pitch from drag
+                                let originalY = yFor(chord.notes.first?.pitch.staffPosition ?? 0)
+                                let newY = originalY + val.translation.height
+                                let sp = staffPosAt(y: newY)
                                 ghostPitch = pitchAt(staffPos: sp)
                             }
                             .onEnded { val in
-                                if let sp = ghostPitch {
-                                    // Move note to new pitch
-                                    moveChord(chord: chord, newPitch: sp)
+                                if draggingID == chord.id, let gp = ghostPitch {
+                                    moveChord(chord: chord, newPitch: gp)
                                 }
                                 draggingID = nil
-                                dragOffset = .zero
-                                ghostPitch = nil
+                                dragOffset  = .zero
+                                ghostPitch  = nil
                             }
                     )
                     .onTapGesture {
-                        if case .delete = scoreEngine.editMode {
+                        switch scoreEngine.editMode {
+                        case .delete:
                             scoreEngine.deleteContent(id: chord.id, partIndex: partIndex)
-                        } else {
+                        case .move:
+                            // Tap in move mode selects the note
+                            scoreEngine.selectedChordID = chord.id
+                        default:
                             scoreEngine.selectedChordID = chord.id
                         }
                     }
@@ -371,13 +384,18 @@ struct DraggableMeasureView: View {
 
             // Ghost pitch label while dragging
             if let gp = ghostPitch, draggingID != nil {
-                Text(gp.displayName)
-                    .font(.system(size: 9, weight: .semibold, design: .monospaced))
-                    .foregroundColor(appState.theme.accent)
-                    .padding(4)
-                    .background(appState.theme.accent.opacity(0.15))
-                    .clipShape(RoundedRectangle(cornerRadius: 4))
-                    .position(x: width / 2, y: 16)
+                HStack(spacing: 4) {
+                    Image(systemName: "arrow.up.and.down")
+                        .font(.system(size: 8))
+                    Text(gp.displayName)
+                        .font(.system(size: 11, weight: .bold, design: .monospaced))
+                }
+                .foregroundColor(.white)
+                .padding(.horizontal, 8).padding(.vertical, 4)
+                .background(appState.theme.accent.opacity(0.85))
+                .clipShape(Capsule())
+                .shadow(color: appState.theme.accent.opacity(0.4), radius: 6)
+                .position(x: width / 2, y: 18)
             }
 
             // Ghost note while hovering to place
@@ -441,6 +459,9 @@ struct DraggableMeasureView: View {
             scoreEngine.inputNote(pitch: pitch, in: partIndex, measureIndex: measureIndex)
         case .addRest:
             scoreEngine.inputRest(in: partIndex, measureIndex: measureIndex)
+        case .select, .move:
+            // Deselect when tapping empty area
+            scoreEngine.selectedChordID = nil
         default: break
         }
     }
@@ -471,13 +492,15 @@ struct DraggableMeasureView: View {
 
     func pitchFromStaffPos(_ staffPos: Int) -> Pitch {
         let whites: [PitchClass] = [.C, .D, .E, .F, .G, .A, .B]
-        // staffPos 0 = C4 (middle C), 1 = D4, 7 = C5, -7 = C3 etc.
-        let totalSteps = staffPos + 28  // offset to keep positive
-        let oct  = totalSteps / 7 - 4 + 4  // centre around oct 4
-        let idx  = ((totalSteps % 7) + 7) % 7
+        // staffPos 0 = C4 (middle C = MIDI 60)
+        // positive staffPos = higher pitch, negative = lower
+        // Each octave = 7 diatonic steps
+        let absPos  = staffPos + 1000 * 7     // large positive offset to avoid negative mod
+        let octave  = (staffPos + 1000*7) / 7 - 1000 + 4  // centre on C4
+        let idx     = ((staffPos % 7) + 7) % 7
         return Pitch(
-            pitchClass: whites[max(0, min(6, idx))],
-            octave:     max(1, min(7, oct))
+            pitchClass: whites[idx],
+            octave:     max(1, min(7, octave))
         )
     }
 
@@ -507,6 +530,7 @@ struct DraggableMeasureView: View {
 
 // MARK: - Note Head (Canvas-based)
 struct NoteHeadCanvas: View {
+    @Environment(ScoreEngine.self) private var scoreEngine
     let duration:    NoteDuration
     let xPos:        CGFloat
     let yPos:        CGFloat
@@ -514,17 +538,32 @@ struct NoteHeadCanvas: View {
     let isSelected:  Bool
     let accent:      Color
 
+    var showMoveHint: Bool {
+        if case .move = scoreEngine.editMode { return true }
+        return false
+    }
+
     var hw: CGFloat { lineSpacing * 1.15 }
     var hh: CGFloat { lineSpacing * 0.82 }
     var fill: Color { isSelected ? accent : .white }
 
     var body: some View {
-        Ellipse()
-            .fill(duration.isFilled ? fill : .clear)
-            .overlay(Ellipse().stroke(fill, lineWidth: 1.2))
-            .frame(width: hw, height: hh)
-            .rotationEffect(.degrees(-12))
-            .position(x: xPos, y: yPos)
+        ZStack {
+            Ellipse()
+                .fill(duration.isFilled ? fill : .clear)
+                .overlay(Ellipse().stroke(fill, lineWidth: 1.2))
+                .frame(width: hw, height: hh)
+                .rotationEffect(.degrees(-12))
+
+            // Move mode indicator — pulsing ring on selected note
+            if isSelected && showMoveHint {
+                Ellipse()
+                    .stroke(accent.opacity(0.6), lineWidth: 1.5)
+                    .frame(width: hw + 6, height: hh + 4)
+                    .rotationEffect(.degrees(-12))
+            }
+        }
+        .position(x: xPos, y: yPos)
     }
 }
 

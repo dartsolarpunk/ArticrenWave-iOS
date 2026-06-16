@@ -3,8 +3,9 @@ import SwiftUI
 import Observation
 
 // MARK: - Types needed by @Observable classes (must be in same file for macro expansion)
-enum ScoreEditMode {
+enum ScoreEditMode: Equatable {
     case select
+    case move            // select note then drag to reposition
     case addNote(NoteDuration)
     case addRest(RestDuration)
     case addAccidental(Accidental)
@@ -12,6 +13,18 @@ enum ScoreEditMode {
     case addTie
     case addSlur
     case delete
+
+    static func == (lhs: ScoreEditMode, rhs: ScoreEditMode) -> Bool {
+        switch (lhs, rhs) {
+        case (.select, .select), (.move, .move),
+             (.addAccent, .addAccent), (.addTie, .addTie),
+             (.addSlur, .addSlur), (.delete, .delete): return true
+        case (.addNote(let a), .addNote(let b)): return a == b
+        case (.addRest(let a), .addRest(let b)): return a == b
+        case (.addAccidental(let a), .addAccidental(let b)): return a == b
+        default: return false
+        }
+    }
 }
 
 // AudioInstrument — mirrors the one in MusicModels for @Observable macro scope
@@ -105,9 +118,7 @@ class AudioEngine {
     func loadInstrumentNamed(_ name: String) { currentInstrumentName = name }
 
     func playPitch(_ pitch: Pitch, duration: Double = 0.4) {
-        Task { @MainActor in
-            AWAudioPlayer.shared.playPitch(pitch, instrumentName: currentInstrumentName, duration: duration)
-        }
+        AWAudioPlayer.shared.playPitch(pitch, instrumentName: currentInstrumentName, duration: duration)
     }
     func preload() {
         Task { @MainActor in AWAudioPlayer.shared.setup() }

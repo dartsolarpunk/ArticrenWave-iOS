@@ -1,8 +1,9 @@
-// AWAudioEngine.swift — Thread-safe audio playback
-// @Observable state accessed only on MainActor; audio ops on audio queue
+// AWAudioEngine.swift — Thread-safe audio engine
+// Key rule: AVAudioUnitSampler note on/off on audio thread only
 import AVFoundation
 import Observation
 
+// MARK: - Instrument map
 struct AWInstrument {
     let name: String
     let midiProgram: UInt8
@@ -28,22 +29,22 @@ struct AWInstrument {
     }
 }
 
-// MARK: - Scheduled note (value type — safe to pass across threads)
+// Value type — safe to pass across thread boundaries
 private struct ScheduledNote {
     let pitchClass: PitchClass
     let octave:     Int
-    let startTime:  Double
+    let startTime:  Double   // seconds from start
     let duration:   Double
     let program:    UInt8
+    var midiNote: Int { (octave + 1) * 12 + pitchClass.rawValue }
 }
 
-// MARK: - Audio Player
+// MARK: - Audio Player (@Observable for UI state only)
 @Observable
-@MainActor
 class AWAudioPlayer {
     static let shared = AWAudioPlayer()
 
-    // Playback progress (all on MainActor)
+    // UI state — only written on main thread
     var isPlaying:   Bool   = false
     var isPaused:    Bool   = false
     var currentBeat: Double = 0.0
@@ -51,114 +52,120 @@ class AWAudioPlayer {
 
     var progress: Double { totalBeats > 0 ? currentBeat / totalBeats : 0 }
     var currentTimeString: String {
-        guard totalBeats > 0 else { return "0:00.0" }
-        let bpm   = _bpm > 0 ? _bpm : 80
-        let secs  = (currentBeat / Double(bpm)) * 60.0
+        let secs = totalBeats > 0 ? (currentBeat / Double(max(1, _bpm))) * 60.0 : 0
         return String(format: "%d:%04.1f", Int(secs)/60, secs.truncatingRemainder(dividingBy: 60))
     }
 
-    // Private audio-thread state
-    private var engine     = AVAudioEngine()
-    private var sampler    = AVAudioUnitSampler()
-    private var playerNode = AVAudioPlayerNode()
-    private var isSetup    = false
-    private var useSampler = false
-    private var _bpm       = 80
-    private var playTimer: Timer?
-    private let audioQ     = DispatchQueue(label: "aw.audio", qos: .userInteractive)
+    // Audio objects — only touched on audioThread
+    private var engine      = AVAudioEngine()
+    private var sampler     = AVAudioUnitSampler()
+    private var playerNode  = AVAudioPlayerNode()
+    private var isSetup     = false
+    private var useSampler  = false
+    private var _bpm        = 80
+    private var playTimer:  Timer?
+
+    // Dedicated serial queue for audio I/O
+    private let audioThread = DispatchQueue(label: "aw.audio.thread", qos: .userInteractive)
 
     private init() {}
 
-    // MARK: - Setup (call on main thread)
+    // MARK: - Setup
     func setup() {
         guard !isSetup else { return }
         isSetup = true
 
         do {
-            try AVAudioSession.sharedInstance().setCategory(.playback, mode: .default, options: [.mixWithOthers])
+            try AVAudioSession.sharedInstance().setCategory(
+                .playback, mode: .default, options: [.mixWithOthers]
+            )
             try AVAudioSession.sharedInstance().setActive(true)
         } catch { print("AVAudioSession: \(error)") }
 
         engine.attach(sampler)
         engine.attach(playerNode)
-        engine.connect(sampler,     to: engine.mainMixerNode, format: nil)
-        engine.connect(playerNode,  to: engine.mainMixerNode, format: nil)
+        engine.connect(sampler,    to: engine.mainMixerNode, format: nil)
+        engine.connect(playerNode, to: engine.mainMixerNode, format: nil)
 
-        do { try engine.start() }
-        catch { print("Engine: \(error)"); return }
+        do { try engine.start() } catch { print("Engine start: \(error)"); return }
 
-        // Try system DLS soundfont
-        for path in ["/System/Library/Audio/Sounds/Banks/gs_instruments.dls",
-                     "/System/Library/Audio/Sounds/Banks/MacProDefault.dls"] {
-            guard FileManager.default.fileExists(atPath: path) else { continue }
-            do {
-                try sampler.loadSoundBankInstrument(
-                    at: URL(fileURLWithPath: path), program: 0, bankMSB: 0x79, bankLSB: 0
-                )
-                useSampler = true
-                break
-            } catch { continue }
+        // Try system DLS
+        let dlsPaths = [
+            "/System/Library/Audio/Sounds/Banks/gs_instruments.dls",
+            "/System/Library/Audio/Sounds/Banks/MacProDefault.dls",
+        ]
+        for p in dlsPaths where FileManager.default.fileExists(atPath: p) {
+            if (try? sampler.loadSoundBankInstrument(
+                at: URL(fileURLWithPath: p), program: 0, bankMSB: 0x79, bankLSB: 0
+            )) != nil {
+                useSampler = true; break
+            }
         }
         // Bundled SF2
         if !useSampler {
-            for res in [("GeneralUser GS", "sf2"), ("soundfont", "sf2")] {
-                if let url = Bundle.main.url(forResource: res.0, withExtension: res.1) {
-                    try? sampler.loadSoundBankInstrument(at: url, program: 0, bankMSB: 0x79, bankLSB: 0)
+            for (res, ext) in [("GeneralUser GS","sf2"),("soundfont","sf2")] {
+                if let url = Bundle.main.url(forResource: res, withExtension: ext),
+                   (try? sampler.loadSoundBankInstrument(
+                       at: url, program: 0, bankMSB: 0x79, bankLSB: 0)) != nil {
                     useSampler = true; break
                 }
             }
         }
     }
 
-    // MARK: - Play single pitch (called from UI — main thread safe)
+    // MARK: - Play single pitch (UI-triggered, main thread)
     func playPitch(_ pitch: Pitch, instrumentName: String = "Grand Piano", duration: Double = 0.5) {
         if !isSetup { setup() }
+        guard engine.isRunning else { setup(); return }
+
         let midi = UInt8(max(21, min(108, pitch.midiNote)))
         let prog = AWInstrument.find(instrumentName).midiProgram
 
         if useSampler {
+            // AVAudioUnitSampler is thread-safe for startNote/stopNote
             sampler.sendProgramChange(prog, bankMSB: 0x79, bankLSB: 0, onChannel: 0)
             sampler.startNote(midi, withVelocity: 90, onChannel: 0)
-            // Stop after duration — on main thread is fine for UI-triggered notes
-            Task { @MainActor in
-                try? await Task.sleep(nanoseconds: UInt64(duration * 1_000_000_000))
-                self.sampler.stopNote(midi, onChannel: 0)
+            let s = sampler
+            audioThread.asyncAfter(deadline: .now() + duration) {
+                s.stopNote(midi, onChannel: 0)
             }
         } else {
-            playSynthTone(midiNote: Int(midi), duration: duration, program: prog)
+            synthNote(midi: Int(midi), duration: duration, program: prog)
         }
     }
 
-    // MARK: - Synthesized tone (main thread safe — scheduleBuffer is thread-safe)
-    private func playSynthTone(midiNote: Int, duration: Double, program: UInt8) {
+    // MARK: - Synthesized tone
+    private func synthNote(midi: Int, duration: Double, program: UInt8) {
         guard engine.isRunning else { return }
-        let sr   = 44100.0
-        let fc   = Int(sr * duration)
-        let freq = 440.0 * pow(2.0, (Double(midiNote) - 69.0) / 12.0)
-        let fmt  = AVAudioFormat(standardFormatWithSampleRate: sr, channels: 1)!
-        guard let buf = AVAudioPCMBuffer(pcmFormat: fmt, frameCapacity: AVAudioFrameCount(fc)),
-              let ptr = buf.floatChannelData?[0] else { return }
+        let sr  = 44100.0
+        let fc  = Int(sr * min(duration, 3.0))
+        let freq = 440.0 * pow(2.0, (Double(midi) - 69.0) / 12.0)
+        guard let fmt = AVAudioFormat(standardFormatWithSampleRate: sr, channels: 1),
+              let buf = AVAudioPCMBuffer(pcmFormat: fmt, frameCapacity: AVAudioFrameCount(fc)),
+              let ptr = buf.floatChannelData?[0]
+        else { return }
         buf.frameLength = AVAudioFrameCount(fc)
 
-        audioQ.async {
+        audioThread.async { [weak self] in
+            guard let self else { return }
             for i in 0..<fc {
                 let t   = Double(i) / sr
-                let env = min(1.0, t * 20) * max(0, 1.0 - t / duration)
-                let s: Double
+                let env = min(1.0, t * 15) * max(0.0, 1.0 - t / duration)
+                let v: Double
                 switch program {
-                case 40...43:
+                case 40...43:                              // strings — saw
                     let ph = (freq * t).truncatingRemainder(dividingBy: 1.0)
-                    s = (2*ph - 1) * env
-                case 56...75:
+                    v = (2*ph - 1) * env * 0.35
+                case 56...75:                              // winds/brass — square
                     let ph = (freq * t).truncatingRemainder(dividingBy: 1.0)
-                    s = (ph < 0.5 ? 1.0 : -1.0) * env * 0.7
-                default:
-                    let d = exp(-t * 4.0)
-                    s = (sin(2 * .pi * freq * t)
-                       + sin(2 * .pi * freq * 2 * t) * 0.35
-                       + sin(2 * .pi * freq * 3 * t) * 0.12) * d * 0.5
+                    v = (ph < 0.5 ? 1.0 : -1.0) * env * 0.28
+                default:                                   // piano — sine+harmonics
+                    let d = exp(-t * 3.5)
+                    v = (sin(2*.pi*freq*t)
+                       + sin(2*.pi*freq*2*t) * 0.30
+                       + sin(2*.pi*freq*3*t) * 0.10) * d * 0.40
                 }
-                ptr[i] = Float(s * 0.4)
+                ptr[i] = Float(v)
             }
             DispatchQueue.main.async {
                 if !self.playerNode.isPlaying { self.playerNode.play() }
@@ -167,44 +174,60 @@ class AWAudioPlayer {
         }
     }
 
-    // MARK: - Score playback
-    // MUST be called on MainActor — extracts notes from @Observable document here
+    // MARK: - Score playback (call from main thread only)
     func play(document: ScoreDocument) {
         if !isSetup { setup() }
-        guard !isPlaying || isPaused else { return }
+
+        // Don't restart if already playing
+        if isPlaying && !isPaused { return }
+
         if !isPaused { currentBeat = 0 }
         isPlaying = true
         isPaused  = false
         _bpm      = document.tempo
 
         totalBeats = Double(max(1, document.parts.first?.measures.count ?? 4)) * 4.0
-
-        // Extract notes here on MainActor (safe to read @Observable)
-        let notes = extractNotes(from: document)
-        let bpmD  = Double(document.tempo)
+        let bpmD   = Double(document.tempo)
         let sixteenth = 60.0 / bpmD / 4.0
 
-        // Schedule note playback via audioQ (notes are value types — safe to pass)
-        audioQ.async { [weak self] in
-            guard let self else { return }
-            for note in notes {
-                self.audioQ.asyncAfter(deadline: .now() + note.startTime) {
+        // Extract notes on main thread (reads @Observable properties safely)
+        let notes = extractNotes(from: document)
+
+        // Schedule each note on a GLOBAL queue (not self.audioThread to avoid re-entrant deadlock)
+        let schedQueue = DispatchQueue.global(qos: .userInteractive)
+        let capturedSelf = self
+
+        for note in notes {
+            let delay = note.startTime
+            schedQueue.asyncAfter(deadline: .now() + delay) {
+                guard capturedSelf.isPlaying else { return }
+                let pitch = Pitch(pitchClass: note.pitchClass, octave: note.octave)
+                let midi  = UInt8(max(21, min(108, note.midiNote)))
+                let prog  = note.program
+
+                if capturedSelf.useSampler && capturedSelf.engine.isRunning {
+                    capturedSelf.sampler.sendProgramChange(prog, bankMSB: 0x79, bankLSB: 0, onChannel: 0)
+                    capturedSelf.sampler.startNote(midi, withVelocity: 85, onChannel: 0)
+                    let s = capturedSelf.sampler
+                    capturedSelf.audioThread.asyncAfter(deadline: .now() + note.duration * 0.9) {
+                        s.stopNote(midi, onChannel: 0)
+                    }
+                } else {
                     DispatchQueue.main.async {
-                        guard self.isPlaying else { return }
-                        let pitch = Pitch(pitchClass: note.pitchClass, octave: note.octave)
-                        let name  = AWInstrument.all.first { $0.midiProgram == note.program }?.name ?? "Grand Piano"
-                        self.playPitch(pitch, instrumentName: name, duration: note.duration)
+                        capturedSelf.synthNote(midi: Int(midi), duration: note.duration, program: prog)
                     }
                 }
             }
         }
 
-        // Advance scrubber on main thread via Timer
+        // Timer advances scrubber on main thread
         playTimer?.invalidate()
-        playTimer = Timer.scheduledTimer(withTimeInterval: sixteenth, repeats: true) { [weak self] _ in
-            guard let self else { return }
+        playTimer = Timer.scheduledTimer(withTimeInterval: sixteenth, repeats: true) { [weak self] t in
+            guard let self else { t.invalidate(); return }
             self.currentBeat += 0.25
-            if self.currentBeat >= self.totalBeats { self.stop() }
+            if self.currentBeat >= self.totalBeats {
+                self.stop()
+            }
         }
     }
 
@@ -222,21 +245,20 @@ class AWAudioPlayer {
         currentBeat = progress * totalBeats
     }
 
-    // MARK: - Note extraction (MainActor — reads @Observable safely)
+    // MARK: - Note extraction (main thread — safe for @Observable)
     private func extractNotes(from doc: ScoreDocument) -> [ScheduledNote] {
         var events: [ScheduledNote] = []
-        let beatDur = 60.0 / Double(doc.tempo)
+        let beatSecs = 60.0 / Double(doc.tempo)
 
         for part in doc.parts {
             let prog = AWInstrument.find(part.instrument.rawValue).midiProgram
-            var beat = 0.0
-
+            var beatPos = 0.0
             for measure in part.measures {
                 for content in measure.contents {
                     switch content {
                     case .chord(let chord):
-                        let t = beat * beatDur
-                        let d = chord.totalBeats * beatDur * 0.88
+                        let t = beatPos * beatSecs
+                        let d = max(0.05, chord.totalBeats * beatSecs * 0.88)
                         for note in chord.notes {
                             events.append(ScheduledNote(
                                 pitchClass: note.pitch.pitchClass,
@@ -246,9 +268,9 @@ class AWAudioPlayer {
                                 program:    prog
                             ))
                         }
-                        beat += chord.totalBeats
+                        beatPos += chord.totalBeats
                     case .rest(let rest):
-                        beat += rest.duration.beats
+                        beatPos += rest.duration.beats
                     }
                 }
             }
@@ -256,18 +278,18 @@ class AWAudioPlayer {
         return events.sorted { $0.startTime < $1.startTime }
     }
 
-    // MARK: - MIDI export
+    // MARK: - MIDI export (main thread)
     func buildMIDI(from document: ScoreDocument) -> Data {
         let bpm = document.tempo; let ticks = 480
         var tracks: [Data] = []
         let mspb = 60_000_000 / bpm
         tracks.append(Data([0x00,0xFF,0x51,0x03,
-                             UInt8((mspb>>16)&0xFF),UInt8((mspb>>8)&0xFF),UInt8(mspb&0xFF),
-                             0x00,0xFF,0x2F,0x00]))
+            UInt8((mspb>>16)&0xFF),UInt8((mspb>>8)&0xFF),UInt8(mspb&0xFF),
+            0x00,0xFF,0x2F,0x00]))
 
         for (pi, part) in document.parts.enumerated() {
             var t = Data()
-            let ch = UInt8(min(pi, 14))
+            let ch   = UInt8(min(pi,14))
             let prog = AWInstrument.find(part.instrument.rawValue).midiProgram
             t += delta(0) + [0xC0|ch, prog]
             for measure in part.measures {
@@ -277,14 +299,13 @@ class AWAudioPlayer {
                         let dur = Int(chord.totalBeats * Double(ticks))
                         for note in chord.notes {
                             let m = UInt8(max(21,min(108,note.pitch.midiNote)))
-                            t += delta(0) + [0x90|ch, m, 90]
+                            t += delta(0) + [0x90|ch,m,90]
                         }
                         for note in chord.notes {
                             let m = UInt8(max(21,min(108,note.pitch.midiNote)))
-                            t += delta(dur) + [0x80|ch, m, 0]
+                            t += delta(dur) + [0x80|ch,m,0]
                         }
-                    case .rest(let rest):
-                        let _ = Int(rest.duration.beats * Double(ticks))
+                    case .rest: break
                     }
                 }
             }
@@ -292,32 +313,30 @@ class AWAudioPlayer {
             tracks.append(t)
         }
 
-        var midi = Data()
-        midi += [0x4D,0x54,0x68,0x64,0,0,0,6,0,1]
+        var midi = Data([0x4D,0x54,0x68,0x64,0,0,0,6,0,1])
         let n = UInt16(tracks.count)
         midi += [UInt8(n>>8),UInt8(n&0xFF),UInt8(ticks>>8),UInt8(ticks&0xFF)]
         for t in tracks {
-            midi += [0x4D,0x54,0x72,0x6B]
             let l = UInt32(t.count)
-            midi += [UInt8(l>>24),UInt8(l>>16&0xFF),UInt8(l>>8&0xFF),UInt8(l&0xFF)]
-            midi += t
+            midi += [0x4D,0x54,0x72,0x6B,
+                     UInt8(l>>24),UInt8(l>>16&0xFF),UInt8(l>>8&0xFF),UInt8(l&0xFF)] + t
         }
         return midi
     }
 
-    private func delta(_ ticks: Int) -> Data {
-        var v=ticks; var b=[UInt8]()
+    private func delta(_ v: Int) -> Data {
+        var v=v; var b=[UInt8]()
         b.append(UInt8(v&0x7F)); v>>=7
         while v>0 { b.insert(UInt8((v&0x7F)|0x80),at:0); v>>=7 }
         return Data(b)
     }
 
     func exportWAV(document: ScoreDocument, completion: @escaping (URL?) -> Void) {
-        let midiData = buildMIDI(from: document)
-        let url = FileManager.default.temporaryDirectory.appendingPathComponent(document.title + ".mid")
-        try? midiData.write(to: url)
+        let midi = buildMIDI(from: document)
+        let url  = FileManager.default.temporaryDirectory
+            .appendingPathComponent(document.title + ".mid")
+        try? midi.write(to: url)
         completion(url)
     }
-
     func exportM4A(wavURL: URL, completion: @escaping (URL?) -> Void) { completion(nil) }
 }

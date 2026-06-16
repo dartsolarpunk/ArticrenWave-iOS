@@ -17,6 +17,15 @@ struct NotePalette: View {
                     accent: appState.theme.accent
                 ) { scoreEngine.editMode = .select }
 
+                // ── MOVE ──────────────────────────────────────
+                PaletteKey(
+                    label: { Image(systemName: "arrow.up.and.down.and.arrow.left.and.right")
+                        .font(.system(size: 12)) },
+                    sublabel: "Move",
+                    isActive: { if case .move = scoreEngine.editMode { return true }; return false }(),
+                    accent: appState.theme.accent
+                ) { scoreEngine.editMode = .move }
+
                 paletteDivider
 
                 // ── NOTES ───────────────────────────────────────
@@ -141,6 +150,7 @@ struct NotePalette: View {
         case .sixteenth: return .sixteenth
         }
     }
+    var isMove:   Bool { if case .move      = scoreEngine.editMode { return true }; return false }
     var isTie:    Bool { if case .addTie    = scoreEngine.editMode { return true }; return false }
     var isSlur:   Bool { if case .addSlur   = scoreEngine.editMode { return true }; return false }
     var isAccent: Bool { if case .addAccent = scoreEngine.editMode { return true }; return false }

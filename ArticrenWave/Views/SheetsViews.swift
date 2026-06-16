@@ -144,8 +144,7 @@ struct ExportSheet: View {
         isExporting = true
         let format = formats[formatIndex]
         let doc = scoreEngine.document
-        Task { @MainActor in
-            if format == "MIDI" {
+        if format == "MIDI" {
                 let midiData = AWAudioPlayer.shared.buildMIDI(from: doc)
                 let url = FileManager.default.temporaryDirectory
                     .appendingPathComponent(doc.title + ".mid")
