@@ -146,29 +146,31 @@ struct ComposerTopBar: View {
                 TopBarButton(icon: "music.note.list") { showLayoutPicker = true }
                 TopBarButton(icon: "square.and.arrow.up") { showExportSheet = true }
 
-                // Record button
+                // Record button — red pulse when live recording active
                 Button {
                     if scoreEngine.isRecording {
                         scoreEngine.stopRecording()
+                        // Ensure piano is open for live recording
                     } else {
                         scoreEngine.startRecording()
+                        appState.isPianoDrawerOpen = true  // auto-open piano for recording
                     }
                 } label: {
-                    Circle()
-                        .fill(scoreEngine.isRecording ? Color.red : Color.white.opacity(0.08))
-                        .frame(width: 30, height: 30)
-                        .overlay(
+                    ZStack {
+                        Circle()
+                            .fill(scoreEngine.isRecording ? Color.red : Color.white.opacity(0.08))
+                            .frame(width: 32, height: 32)
+                        if scoreEngine.isRecording {
+                            Image(systemName: "stop.fill")
+                                .font(.system(size: 10))
+                                .foregroundColor(.white)
+                        } else {
                             Circle()
                                 .fill(Color.red)
-                                .frame(width: scoreEngine.isRecording ? 10 : 12, height: scoreEngine.isRecording ? 10 : 12)
-                                .opacity(scoreEngine.isRecording ? 0 : 1)
-                        )
-                        .overlay(
-                            Image(systemName: "stop.fill")
-                                .font(.system(size: 9))
-                                .foregroundColor(.white)
-                                .opacity(scoreEngine.isRecording ? 1 : 0)
-                        )
+                                .frame(width: 13, height: 13)
+                        }
+                    }
+                    .shadow(color: scoreEngine.isRecording ? Color.red.opacity(0.6) : .clear, radius: 6)
                 }
                 .padding(.trailing, 8)
             }

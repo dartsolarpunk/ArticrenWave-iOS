@@ -192,6 +192,7 @@ struct PianoKeyboardView: View {
 struct AWWhiteKey: View {
     @Environment(AudioEngine.self) private var audioEngine
     @Environment(AppState.self)    private var appState
+    @Environment(ScoreEngine.self) private var scoreEngine
     let key: PianoKeyboardView.PianoKey
     let width: CGFloat
     let height: CGFloat
@@ -199,10 +200,18 @@ struct AWWhiteKey: View {
 
     var isMiddleC: Bool { key.pitchClass == .C && key.octave == 4 }
 
+    // Grey out keys outside the current instrument's playable range
+    var isPlayable: Bool {
+        let instrName = audioEngine.currentInstrumentName
+        let family = InstrumentFamily.allCases.first { $0.rawValue == instrName }
+        guard let family else { return true }
+        return family.playableOctaveRange.contains(key.octave)
+    }
+
     var body: some View {
         ZStack(alignment: .bottom) {
             RoundedRectangle(cornerRadius: 4, style: .continuous)
-                .fill(pressed ? appState.theme.accent.opacity(0.4) : Color.white)
+                .fill(pressed ? appState.theme.accent.opacity(0.4) : (isPlayable ? Color.white : Color.gray.opacity(0.35)))
                 .overlay(RoundedRectangle(cornerRadius: 4).stroke(Color.black.opacity(0.25), lineWidth: 0.5))
                 .frame(width: width, height: height)
 
@@ -225,11 +234,18 @@ struct AWWhiteKey: View {
             DragGesture(minimumDistance: 0)
                 .onChanged { _ in
                     if !pressed {
+                        guard isPlayable else { return }
                         pressed = true
                         // Piano octave 1=high(right), 7=low(left). Map to MIDI: midiOct = 8 - pianoOct
                         let midiOct = max(1, min(7, 8 - key.octave))
                         let pitch = Pitch(pitchClass: key.pitchClass, octave: midiOct)
                         audioEngine.playPitch(pitch, duration: 0.5)
+                        // Live recording: if recording, add note to score
+                        if scoreEngine.isRecording {
+                            let partIdx = 0
+                            let measIdx = max(0, (scoreEngine.document.parts.first?.measures.count ?? 1) - 1)
+                            scoreEngine.inputNote(pitch: pitch, in: partIdx, measureIndex: measIdx)
+                        }
                     }
                 }
                 .onEnded { _ in pressed = false }
@@ -242,14 +258,22 @@ struct AWWhiteKey: View {
 struct AWBlackKey: View {
     @Environment(AudioEngine.self) private var audioEngine
     @Environment(AppState.self)    private var appState
+    @Environment(ScoreEngine.self) private var scoreEngine
     let key: PianoKeyboardView.PianoKey
     let width: CGFloat
     let height: CGFloat
     @State private var pressed = false
 
+    var isPlayable: Bool {
+        let instrName = audioEngine.currentInstrumentName
+        let family = InstrumentFamily.allCases.first { $0.rawValue == instrName }
+        guard let family else { return true }
+        return family.playableOctaveRange.contains(key.octave)
+    }
+
     var body: some View {
         RoundedRectangle(cornerRadius: 3, style: .continuous)
-            .fill(pressed ? appState.theme.accent.opacity(0.7) : Color(white: 0.10))
+            .fill(pressed ? appState.theme.accent.opacity(0.7) : (isPlayable ? Color(white: 0.10) : Color.gray.opacity(0.25)))
             .overlay(RoundedRectangle(cornerRadius: 3).stroke(Color.black.opacity(0.7), lineWidth: 0.5))
             .frame(width: width, height: height)
             .scaleEffect(pressed ? 0.96 : 1.0)

@@ -251,9 +251,14 @@ struct DraggableMeasureView: View {
 
     func pitchAt(staffPos: Int) -> Pitch {
         let whites: [PitchClass] = [.C, .D, .E, .F, .G, .A, .B]
-        var oct = 4 + staffPos / 7
-        var idx = ((staffPos % 7) + 7) % 7
-        return Pitch(pitchClass: whites[idx], octave: max(1, min(7, oct)))
+        let offset  = 700
+        let shifted = staffPos + offset
+        let octave  = shifted / 7 - (offset / 7) + 4
+        let idx     = ((shifted % 7) + 7) % 7
+        return Pitch(
+            pitchClass: whites[max(0, min(6, idx))],
+            octave:     max(1, min(7, octave))
+        )
     }
 
     var lassoRect: CGRect? {
@@ -326,25 +331,29 @@ struct DraggableMeasureView: View {
                     }
                     .contentShape(Rectangle().size(CGSize(width: 40, height: 80))
                         .offset(x: xFor(chord.beatPosition) - 20, y: 0))
-                    .gesture(
-                        DragGesture(minimumDistance: 6)
+                    .simultaneousGesture(
+                        DragGesture(minimumDistance: 4)
                             .onChanged { val in
-                                // Allow drag in move mode OR when a note is already selected
-                                let isMoveMode = { if case .move = scoreEngine.editMode { return true }; return false }()
-                                let isSelected = scoreEngine.selectedChordID == chord.id
-                                guard isMoveMode || isSelected else { return }
+                                let isMoveMode: Bool = {
+                                    if case .move = scoreEngine.editMode { return true }
+                                    return false
+                                }()
+                                let isAlreadySelected = scoreEngine.selectedChordID == chord.id
 
-                                if draggingID == nil {
+                                // Allow drag in move mode (any note) OR dragging an already-selected note
+                                guard isMoveMode || isAlreadySelected else { return }
+
+                                if draggingID != chord.id {
                                     draggingID = chord.id
                                     scoreEngine.selectedChordID = chord.id
                                     dragOffset = .zero
                                 }
                                 dragOffset = val.translation
 
-                                // Calculate ghost pitch from drag
-                                let originalY = yFor(chord.notes.first?.pitch.staffPosition ?? 0)
-                                let newY = originalY + val.translation.height
-                                let sp = staffPosAt(y: newY)
+                                let origSP = chord.notes.first?.pitch.staffPosition ?? 0
+                                let origY  = yFor(origSP)
+                                let newY   = origY + val.translation.height
+                                let sp     = staffPosAt(y: newY)
                                 ghostPitch = pitchAt(staffPos: sp)
                             }
                             .onEnded { val in
@@ -491,15 +500,16 @@ struct DraggableMeasureView: View {
     }
 
     func pitchFromStaffPos(_ staffPos: Int) -> Pitch {
+        // staffPos 0 = C4 (middle C), positive = higher, negative = lower
+        // Each octave span = 7 diatonic steps
         let whites: [PitchClass] = [.C, .D, .E, .F, .G, .A, .B]
-        // staffPos 0 = C4 (middle C = MIDI 60)
-        // positive staffPos = higher pitch, negative = lower
-        // Each octave = 7 diatonic steps
-        let absPos  = staffPos + 1000 * 7     // large positive offset to avoid negative mod
-        let octave  = (staffPos + 1000*7) / 7 - 1000 + 4  // centre on C4
-        let idx     = ((staffPos % 7) + 7) % 7
+        // Use a large offset to keep modulo positive
+        let offset = 700  // 100 octaves
+        let shifted = staffPos + offset
+        let octave  = shifted / 7 - (offset / 7) + 4
+        let idx     = ((shifted % 7) + 7) % 7
         return Pitch(
-            pitchClass: whites[idx],
+            pitchClass: whites[max(0, min(6, idx))],
             octave:     max(1, min(7, octave))
         )
     }
