@@ -125,21 +125,25 @@ struct Chord: Identifiable, Codable {
     var duration: NoteDuration       // all notes in chord share duration
     var beatPosition: Double         // position in measure (0.0 ... <4.0)
 
-    var totalBeats: Double { duration.beats }
+    var totalBeats: Double {
+        // Chord occupies the slot of its longest note
+        notes.map { $0.duration.beats }.max() ?? duration.beats
+    }
 
     mutating func addNote(_ note: ScoreNote) -> Bool {
         guard notes.count < 4 else { return false }
-        // Validate: all notes within 4-staff-position range of first note
+        // Notes must be within a reasonable melodic span (about an octave = 7 steps)
         if let first = notes.first {
-            let range = abs(note.pitch.staffPosition - first.pitch.staffPosition)
-            guard range <= 4 else { return false }
+            let span = abs(note.pitch.staffPosition - first.pitch.staffPosition)
+            guard span <= 7 else { return false }
         }
-        // Replace if same staff position
+        // Replace if same pitch (same staff position)
         if let idx = notes.firstIndex(where: { $0.pitch.staffPosition == note.pitch.staffPosition }) {
-            notes[idx] = note
+            notes[idx] = note  // replace with new duration
         } else {
             notes.append(note)
         }
+        notes.sort { $0.pitch.staffPosition < $1.pitch.staffPosition }  // keep sorted bottom→top
         return true
     }
 }

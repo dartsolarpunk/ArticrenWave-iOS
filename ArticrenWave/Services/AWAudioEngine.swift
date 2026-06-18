@@ -1,5 +1,6 @@
-// AWAudioEngine.swift — Pure AVAudioPlayerNode synthesizer (no AVAudioUnitSampler)
-// 100% thread-safe: all AVAudioEngine calls on main thread
+// AWAudioEngine.swift — AVAudioEngine with synthesized instruments
+// All AVAudio calls on MainActor / main thread only
+// Sound design based on additive synthesis per instrument type
 import AVFoundation
 import Observation
 
@@ -33,13 +34,13 @@ private struct ScheduledNote {
     let startTime: Double
     let duration:  Double
     let program:   UInt8
+    let isTied:    Bool
 }
 
 @Observable
 class AWAudioPlayer {
     static let shared = AWAudioPlayer()
 
-    // UI state
     var isPlaying:   Bool   = false
     var isPaused:    Bool   = false
     var currentBeat: Double = 0.0
@@ -47,119 +48,125 @@ class AWAudioPlayer {
 
     var progress: Double { totalBeats > 0 ? currentBeat / totalBeats : 0 }
     var currentTimeString: String {
-        let secs = totalBeats > 0 ? (currentBeat / Double(max(1,_bpm))) * 60.0 : 0
-        return String(format: "%d:%04.1f", Int(secs)/60, secs.truncatingRemainder(dividingBy: 60))
+        let s = totalBeats > 0 ? (currentBeat / Double(max(1,_bpm))) * 60.0 : 0
+        return String(format: "%d:%04.1f", Int(s)/60, s.truncatingRemainder(dividingBy: 60))
     }
 
+    // Audio nodes — only touched on main thread
     private var engine     = AVAudioEngine()
     private var playerNode = AVAudioPlayerNode()
-    private var mixerNode  = AVAudioMixerNode()
+    private var reverbNode = AVAudioUnitReverb()
     private var isSetup    = false
     private var _bpm       = 80
     private var playTimer: Timer?
+    private let sr: Double = 44100
 
-    // Pre-computed buffer cache (midiNote → buffer) for instant playback
-    private var bufferCache: [Int: AVAudioPCMBuffer] = [:]
-    private let sampleRate: Double = 44100
-    private let synthQueue = DispatchQueue(label: "aw.synth", qos: .userInitiated)
+    // Buffer cache: key = (midi << 8 | program)
+    private var bufCache: [Int: AVAudioPCMBuffer] = [:]
+    private let synthQ = DispatchQueue(label: "aw.synth", qos: .userInitiated)
 
     private init() {}
 
-    // MARK: - Setup (main thread)
+    // MARK: - Setup (main thread only)
     func setup() {
         guard !isSetup else { return }
         isSetup = true
-
         do {
-            try AVAudioSession.sharedInstance().setCategory(
-                .playback, mode: .default, options: [.mixWithOthers]
-            )
+            try AVAudioSession.sharedInstance().setCategory(.playback, mode: .default, options: [.mixWithOthers])
             try AVAudioSession.sharedInstance().setActive(true)
-        } catch { print("AudioSession: \(error)") }
-
+        } catch {}
+        reverbNode.loadFactoryPreset(.mediumHall)
+        reverbNode.wetDryMix = 12
         engine.attach(playerNode)
-        engine.attach(mixerNode)
-        engine.connect(playerNode, to: mixerNode,        format: nil)
-        engine.connect(mixerNode,  to: engine.mainMixerNode, format: nil)
-        mixerNode.outputVolume = 1.0
-
+        engine.attach(reverbNode)
+        engine.connect(playerNode, to: reverbNode, format: nil)
+        engine.connect(reverbNode, to: engine.mainMixerNode, format: nil)
         do { try engine.start() } catch { print("Engine: \(error)") }
-
         if !playerNode.isPlaying { playerNode.play() }
-
-        // Pre-warm common notes in background
-        synthQueue.async { [weak self] in
+        // Pre-warm C3–C6 piano buffers
+        synthQ.async { [weak self] in
             guard let self else { return }
-            for midi in 48...84 {  // C3 to C6 range
-                _ = self.makeBuffer(midi: midi, duration: 0.7, program: 0)
-            }
+            for m in 48...72 { _ = self.buildBuf(midi: m, dur: 0.8, prog: 0) }
         }
     }
 
-    // MARK: - Buffer synthesis (runs on synthQueue)
-    private func makeBuffer(midi: Int, duration: Double, program: UInt8) -> AVAudioPCMBuffer? {
-        let sr  = sampleRate
-        let dur = min(duration, 3.0)
-        let fc  = Int(sr * dur)
+    // MARK: - Synthesize PCM buffer (background)
+    func buildBuf(midi: Int, dur: Double, prog: UInt8) -> AVAudioPCMBuffer? {
+        let key = (midi << 8) | Int(prog)
+        if let cached = bufCache[key] { return cached }
+        let fc   = Int(sr * min(dur + 0.1, 3.5))
         let freq = 440.0 * pow(2.0, (Double(midi) - 69.0) / 12.0)
-
         guard let fmt = AVAudioFormat(standardFormatWithSampleRate: sr, channels: 2),
               let buf = AVAudioPCMBuffer(pcmFormat: fmt, frameCapacity: AVAudioFrameCount(fc)),
-              let L = buf.floatChannelData?[0],
-              let R = buf.floatChannelData?[1]
+              let L = buf.floatChannelData?[0], let R = buf.floatChannelData?[1]
         else { return nil }
         buf.frameLength = AVAudioFrameCount(fc)
 
+        let maxDur = dur
         for i in 0..<fc {
             let t   = Double(i) / sr
-            let env = min(1.0, t * 12.0) * max(0.0, 1.0 - (t / dur) * 1.1)
-            let sample: Float
+            let env = min(1.0, t * 18.0) * max(0.0, 1.0 - (t / maxDur) * 1.05)
+            var s: Double
 
-            switch program {
-            case 40...43:   // Strings — sawtooth
+            switch prog {
+            case 40...43:   // Strings — warm sawtooth + chorus
+                let ph  = (freq * t).truncatingRemainder(dividingBy: 1.0)
+                let ph2 = (freq * 1.004 * t).truncatingRemainder(dividingBy: 1.0)
+                s = ((2*ph-1)*0.5 + (2*ph2-1)*0.5) * env * 0.28
+
+            case 56...60:   // Brass — bright sawtooth + harmonic
                 let ph = (freq * t).truncatingRemainder(dividingBy: 1.0)
-                sample = Float((2.0 * ph - 1.0) * env * 0.3)
+                let brassy = (2*ph-1) + sin(2*Double.pi*freq*2*t)*0.3
+                s = brassy * env * 0.22
 
-            case 56...75:   // Winds/Brass — square wave
-                let ph = (freq * t).truncatingRemainder(dividingBy: 1.0)
-                sample = Float((ph < 0.5 ? 0.3 : -0.3) * env)
+            case 68...73:   // Woodwinds — flute-like sine + breathiness
+                let flute  = sin(2*Double.pi*freq*t)
+                let breath = sin(2*Double.pi*freq*2*t)*0.12 + sin(2*Double.pi*freq*3*t)*0.04
+                s = (flute + breath) * env * 0.32
 
-            case 46, 47:    // Harp/Timpani — pluck (fast decay)
-                let decay = exp(-t * 6.0)
-                let s1 = sin(2.0 * Double.pi * freq * t)
-                let s2 = sin(2.0 * Double.pi * freq * 2.0 * t) * 0.3
-                sample = Float((s1 + s2) * decay * 0.45)
+            case 46:        // Harp — pluck with fast decay
+                let decay = exp(-t * 8.0)
+                s = (sin(2*Double.pi*freq*t) + sin(2*Double.pi*freq*2*t)*0.25) * decay * 0.45
 
-            default:        // Piano — additive sine with natural decay
-                let decay = exp(-t * 3.2)
-                let s1 = sin(2.0 * Double.pi * freq * t)
-                let s2 = sin(2.0 * Double.pi * freq * 2.0 * t) * 0.28
-                let s3 = sin(2.0 * Double.pi * freq * 3.0 * t) * 0.10
-                let s4 = sin(2.0 * Double.pi * freq * 4.0 * t) * 0.04
-                sample = Float((s1 + s2 + s3 + s4) * decay * env * 0.38)
+            case 47:        // Timpani — pitched noise + thump
+                let tump  = sin(2*Double.pi*freq*t) * exp(-t*5.0)
+                let noise = sin(2*Double.pi*freq*0.71*t) * exp(-t*12.0) * 0.3
+                s = (tump + noise) * 0.5
+
+            default:        // Piano — piano-quality additive synthesis
+                let d1 = exp(-t * 2.8)
+                let d2 = exp(-t * 4.5)
+                let d3 = exp(-t * 7.0)
+                let d4 = exp(-t * 12.0)
+                let p1 = sin(2*Double.pi*freq*t)   * d1
+                let p2 = sin(2*Double.pi*freq*2*t) * d2 * 0.32
+                let p3 = sin(2*Double.pi*freq*3*t) * d3 * 0.12
+                let p4 = sin(2*Double.pi*freq*4*t) * d4 * 0.06
+                s = (p1 + p2 + p3 + p4) * env * 0.40
             }
-            L[i] = sample
-            R[i] = sample
+
+            // Stereo spread based on octave
+            let spread = Float(0.1 + Double(midi - 21) / 87.0 * 0.8)
+            L[i] = Float(s) * (1.0 - spread * 0.15)
+            R[i] = Float(s) * (1.0 + spread * 0.15)
         }
+        bufCache[key] = buf
         return buf
     }
 
-    // MARK: - Play single pitch (MUST be called on main thread)
+    // MARK: - Play single pitch (call from main thread)
     func playPitch(_ pitch: Pitch, instrumentName: String = "Grand Piano", duration: Double = 0.5) {
         if !isSetup { setup() }
         guard engine.isRunning else { return }
-
         let midi = max(21, min(108, pitch.midiNote))
         let prog = AWInstrument.find(instrumentName).midiProgram
-
-        synthQueue.async { [weak self] in
+        synthQ.async { [weak self] in
             guard let self else { return }
-            let buf = self.makeBuffer(midi: midi, duration: duration, program: prog)
-            guard let buf else { return }
+            let buf = self.buildBuf(midi: midi, dur: duration, prog: prog)
             DispatchQueue.main.async {
-                guard self.engine.isRunning else { return }
+                guard let buf, self.engine.isRunning else { return }
                 if !self.playerNode.isPlaying { self.playerNode.play() }
-                self.playerNode.scheduleBuffer(buf, completionHandler: nil)
+                self.playerNode.scheduleBuffer(buf)
             }
         }
     }
@@ -169,88 +176,87 @@ class AWAudioPlayer {
         if !isSetup { setup() }
         if isPlaying && !isPaused { return }
         if !isPaused { currentBeat = 0 }
-
-        isPlaying = true
-        isPaused  = false
-        _bpm      = document.tempo
-
+        isPlaying = true; isPaused = false
+        _bpm = document.tempo
         totalBeats = Double(max(1, document.parts.first?.measures.count ?? 4)) * 4.0
-        let bpmD   = Double(document.tempo)
-        let sixteenth = 60.0 / bpmD / 4.0
+        let beatSec = 60.0 / Double(document.tempo)
+        let sixth   = beatSec / 4.0
 
-        // Extract notes on main thread (safe for @Observable)
+        // Extract notes on main thread
         let notes = extractNotes(from: document)
 
-        // Synthesize all buffers in background, then schedule on main
-        synthQueue.async { [weak self] in
+        // Pre-synth all buffers in background, then schedule on main
+        synthQ.async { [weak self] in
             guard let self else { return }
-            var scheduled: [(delay: Double, buf: AVAudioPCMBuffer)] = []
+            var items: [(delay: Double, buf: AVAudioPCMBuffer)] = []
             for note in notes {
-                if let buf = self.makeBuffer(midi: note.midi, duration: note.duration, program: note.program) {
-                    scheduled.append((note.startTime, buf))
+                if let buf = self.buildBuf(midi: note.midi, dur: note.duration, prog: note.program) {
+                    items.append((note.startTime, buf))
                 }
             }
-            // Schedule all on main thread
-            DispatchQueue.main.async {
-                guard self.isPlaying else { return }
+            let totalDur = items.map { $0.delay + 0.1 }.max() ?? 1.0
+
+            DispatchQueue.main.async { [weak self] in
+                guard let self, self.isPlaying else { return }
                 guard self.engine.isRunning else { self.stop(); return }
                 if !self.playerNode.isPlaying { self.playerNode.play() }
-                for item in scheduled {
-                    self.playerNode.scheduleBuffer(
-                        item.buf,
-                        at: nil,
-                        options: [],
-                        completionHandler: nil
-                    )
+
+                // Use AVAudioPlayerNode timing to schedule at precise offsets
+                let startTime = self.playerNode.lastRenderTime.map {
+                    AVAudioTime(hostTime: $0.hostTime + AVAudioTime.hostTime(forSeconds: 0.05))
+                }
+
+                for item in items {
+                    let delayFrames = AVAudioFramePosition(item.delay * self.sr)
+                    if let start = startTime {
+                        let noteTime = AVAudioTime(
+                            sampleTime: start.sampleTime + delayFrames,
+                            atRate: self.sr
+                        )
+                        self.playerNode.scheduleBuffer(item.buf, at: noteTime)
+                    } else {
+                        // Fallback: schedule sequentially
+                        self.playerNode.scheduleBuffer(item.buf)
+                    }
                 }
             }
         }
 
-        // Scrubber timer (main thread)
+        // Scrubber timer
         playTimer?.invalidate()
-        playTimer = Timer.scheduledTimer(withTimeInterval: sixteenth, repeats: true) { [weak self] t in
+        playTimer = Timer.scheduledTimer(withTimeInterval: sixth, repeats: true) { [weak self] t in
             guard let self else { t.invalidate(); return }
             self.currentBeat += 0.25
             if self.currentBeat >= self.totalBeats { self.stop() }
         }
     }
 
-    func pause() {
-        playTimer?.invalidate(); playTimer = nil
-        isPaused = true; isPlaying = false
-    }
+    func pause() { playTimer?.invalidate(); playTimer=nil; isPaused=true; isPlaying=false }
+    func stop()  { playTimer?.invalidate(); playTimer=nil; isPlaying=false; isPaused=false; currentBeat=0 }
+    func seek(to p: Double) { currentBeat = p * totalBeats }
 
-    func stop() {
-        playTimer?.invalidate(); playTimer = nil
-        isPlaying = false; isPaused = false; currentBeat = 0
-    }
-
-    func seek(to progress: Double) {
-        currentBeat = progress * totalBeats
-    }
-
-    // MARK: - Note extraction (main thread)
+    // MARK: - Extract notes (main thread safe)
     private func extractNotes(from doc: ScoreDocument) -> [ScheduledNote] {
         var out: [ScheduledNote] = []
-        let beatSec = 60.0 / Double(doc.tempo)
+        let bs = 60.0 / Double(doc.tempo)
         for part in doc.parts {
             let prog = AWInstrument.find(part.instrument.rawValue).midiProgram
             var beat = 0.0
             for measure in part.measures {
                 for content in measure.contents {
                     switch content {
-                    case .chord(let c):
-                        let t = beat * beatSec
-                        let d = max(0.1, c.totalBeats * beatSec * 0.88)
-                        for note in c.notes {
+                    case .chord(let ch):
+                        for note in ch.notes {
                             out.append(ScheduledNote(
-                                midi:      max(21, min(108, note.pitch.midiNote)),
-                                startTime: t, duration: d, program: prog
+                                midi: max(21,min(108,note.pitch.midiNote)),
+                                startTime: beat*bs,
+                                duration: max(0.1, note.duration.beats*bs*0.88),
+                                program: prog,
+                                isTied: false
                             ))
                         }
-                        beat += c.totalBeats
-                    case .rest(let r):
-                        beat += r.duration.beats
+                        beat += ch.totalBeats
+                    case .rest(let r): beat += r.duration.beats
                     }
                 }
             }
@@ -259,44 +265,40 @@ class AWAudioPlayer {
     }
 
     // MARK: - MIDI export
-    func buildMIDI(from document: ScoreDocument) -> Data {
-        let bpm = document.tempo; let ticks = 480
-        var tracks: [Data] = []
-        let mspb = 60_000_000 / bpm
-        tracks.append(Data([0x00,0xFF,0x51,0x03,
+    func buildMIDI(from doc: ScoreDocument) -> Data {
+        let ticks = 480; let bpm = doc.tempo
+        let mspb  = 60_000_000 / bpm
+        var tracks: [Data] = [Data([0x00,0xFF,0x51,0x03,
             UInt8((mspb>>16)&0xFF),UInt8((mspb>>8)&0xFF),UInt8(mspb&0xFF),
-            0x00,0xFF,0x2F,0x00]))
-        for (pi, part) in document.parts.enumerated() {
+            0x00,0xFF,0x2F,0x00])]
+        for (pi,part) in doc.parts.enumerated() {
             var t = Data(); let ch = UInt8(min(pi,14))
-            let prog = AWInstrument.find(part.instrument.rawValue).midiProgram
-            t += delta(0) + [0xC0|ch, prog]
-            for measure in part.measures {
-                for content in measure.contents {
-                    switch content {
-                    case .chord(let c):
-                        let dur = Int(c.totalBeats * Double(ticks))
-                        for n in c.notes { let m=UInt8(max(21,min(108,n.pitch.midiNote))); t+=delta(0)+[0x90|ch,m,90] }
-                        for n in c.notes { let m=UInt8(max(21,min(108,n.pitch.midiNote))); t+=delta(dur)+[0x80|ch,m,0] }
-                    case .rest: break
-                    }
+            let pg = AWInstrument.find(part.instrument.rawValue).midiProgram
+            t += d(0)+[0xC0|ch,pg]
+            for m in part.measures { for c in m.contents {
+                switch c {
+                case .chord(let ch2):
+                    let dur = Int(ch2.totalBeats*Double(ticks))
+                    for n in ch2.notes { let m2=UInt8(max(21,min(108,n.pitch.midiNote))); t+=d(0)+[0x90|ch,m2,90] }
+                    for n in ch2.notes { let m2=UInt8(max(21,min(108,n.pitch.midiNote))); t+=d(dur)+[0x80|ch,m2,0] }
+                case .rest: break
                 }
-            }
-            t += delta(0) + [0xFF,0x2F,0x00]; tracks.append(t)
+            }}
+            t+=d(0)+[0xFF,0x2F,0x00]; tracks.append(t)
         }
         var midi = Data([0x4D,0x54,0x68,0x64,0,0,0,6,0,1])
         let n=UInt16(tracks.count); midi+=[UInt8(n>>8),UInt8(n&0xFF),UInt8(ticks>>8),UInt8(ticks&0xFF)]
         for t in tracks { let l=UInt32(t.count)
-            midi += [0x4D,0x54,0x72,0x6B,UInt8(l>>24),UInt8(l>>16&0xFF),UInt8(l>>8&0xFF),UInt8(l&0xFF)] + t }
+            midi+=[0x4D,0x54,0x72,0x6B,UInt8(l>>24),UInt8(l>>16&0xFF),UInt8(l>>8&0xFF),UInt8(l&0xFF)]+t }
         return midi
     }
-    private func delta(_ v: Int) -> Data {
-        var v=v; var b=[UInt8](); b.append(UInt8(v&0x7F)); v>>=7
-        while v>0 { b.insert(UInt8((v&0x7F)|0x80),at:0); v>>=7 }; return Data(b)
+    private func d(_ v: Int) -> Data {
+        var v=v,b=[UInt8](); b.append(UInt8(v&0x7F)); v>>=7
+        while v>0{b.insert(UInt8((v&0x7F)|0x80),at:0);v>>=7}; return Data(b)
     }
-    func exportWAV(document: ScoreDocument, completion: @escaping (URL?) -> Void) {
-        let midi=buildMIDI(from:document)
+    func exportWAV(document: ScoreDocument, completion: @escaping (URL?)->Void) {
         let url=FileManager.default.temporaryDirectory.appendingPathComponent(document.title+".mid")
-        try? midi.write(to:url); completion(url)
+        try? buildMIDI(from:document).write(to:url); completion(url)
     }
-    func exportM4A(wavURL: URL, completion: @escaping (URL?) -> Void) { completion(nil) }
+    func exportM4A(wavURL: URL, completion: @escaping (URL?)->Void) { completion(nil) }
 }

@@ -176,16 +176,61 @@ class ScoreEngine {
         guard partIndex < document.parts.count else { return }
         guard measureIndex < document.parts[partIndex].measures.count else { return }
         var measure = document.parts[partIndex].measures[measureIndex]
+
+        // Check if there's an existing chord at the last beat position
+        // If so, try to add this note to that chord (build a chord)
+        if let lastContentIdx = measure.contents.indices.last,
+           case .chord(var existingChord) = measure.contents[lastContentIdx] {
+
+            // Check if pitch is already in chord → replace it
+            if existingChord.notes.contains(where: { $0.pitch == pitch }) {
+                // Replace: remove old, add new duration
+                existingChord.notes.removeAll { $0.pitch == pitch }
+                existingChord.notes.append(ScoreNote(pitch: pitch, duration: dur))
+                // Update chord duration to longest note
+                existingChord.duration = existingChord.notes.map { $0.duration }.max(by: { $0.beats < $1.beats }) ?? dur
+                measure.contents[lastContentIdx] = .chord(existingChord)
+                document.parts[partIndex].measures[measureIndex] = measure
+                validationError = nil
+                return
+            }
+
+            // Check if we can add to chord (max 4 notes, within 4-staff-position span)
+            if existingChord.notes.count < 4 {
+                let firstSP = existingChord.notes.first?.pitch.staffPosition ?? pitch.staffPosition
+                let newSP   = pitch.staffPosition
+                let span    = abs(newSP - firstSP)
+
+                if span <= 7 {  // within roughly an octave span for chord
+                    var newNote = ScoreNote(pitch: pitch, duration: dur)
+                    existingChord.notes.append(newNote)
+                    // Chord duration = longest note duration
+                    existingChord.duration = existingChord.notes.map { $0.duration }.max(by: { $0.beats < $1.beats }) ?? dur
+                    measure.contents[lastContentIdx] = .chord(existingChord)
+                    document.parts[partIndex].measures[measureIndex] = measure
+                    validationError = nil
+                    selectedChordID = existingChord.id
+                    return
+                }
+                // Too far apart — start new chord
+            }
+        }
+
+        // Start a new chord
         guard measure.remainingBeats >= dur.beats else {
             validationError = "Not enough beats remaining in this measure"
             return
         }
-        let note = ScoreNote(pitch: pitch, duration: dur)
+
+        let note  = ScoreNote(pitch: pitch, duration: dur)
         var chord = Chord(duration: dur, beatPosition: measure.totalBeats)
         _ = chord.addNote(note)
         measure.contents.append(.chord(chord))
         document.parts[partIndex].measures[measureIndex] = measure
         validationError = nil
+        selectedChordID = chord.id
+
+        // Auto-add new measure if full
         if measure.isFull {
             let isLast = measureIndex == document.parts[partIndex].measures.count - 1
             if isLast {
