@@ -9,7 +9,7 @@ enum ScoreEditMode: Equatable {
     case addNote(NoteDuration)
     case addRest(RestDuration)
     case addAccidental(Accidental)
-    case addAccent
+    case addAccent(AccentType)
     case addTie
     case addSlur
     case delete
@@ -17,11 +17,12 @@ enum ScoreEditMode: Equatable {
     static func == (lhs: ScoreEditMode, rhs: ScoreEditMode) -> Bool {
         switch (lhs, rhs) {
         case (.select, .select), (.move, .move),
-             (.addAccent, .addAccent), (.addTie, .addTie),
+             (.addTie, .addTie),
              (.addSlur, .addSlur), (.delete, .delete): return true
         case (.addNote(let a), .addNote(let b)): return a == b
         case (.addRest(let a), .addRest(let b)): return a == b
         case (.addAccidental(let a), .addAccidental(let b)): return a == b
+        case (.addAccent(let a), .addAccent(let b)): return a == b
         default: return false
         }
     }
@@ -115,7 +116,10 @@ class AudioEngine {
 
     static let shared = AudioEngine()
 
-    func loadInstrumentNamed(_ name: String) { currentInstrumentName = name }
+    func loadInstrumentNamed(_ name: String) {
+        currentInstrumentName = name
+        AWAudioPlayer.shared.prewarm(instrumentName: name)
+    }
 
     func playPitch(_ pitch: Pitch, duration: Double = 0.4) {
         AWAudioPlayer.shared.playPitch(pitch, instrumentName: currentInstrumentName, duration: duration)
@@ -256,6 +260,45 @@ class ScoreEngine {
         validationError = nil
     }
 
+    // MARK: - Tie / Slur two-tap workflow
+    var pendingTieStart: UUID? = nil
+
+    func handleTieTap(chordID: UUID) {
+        let isSlur: Bool
+        switch editMode {
+        case .addTie:  isSlur = false
+        case .addSlur: isSlur = true
+        default: return
+        }
+        if let start = pendingTieStart {
+            guard start != chordID else { pendingTieStart = nil; return }
+            document.ties.append(Tie(fromChordID: start, toChordID: chordID, isSlur: isSlur))
+            pendingTieStart = nil
+            editMode = .select   // auto-toggle off after second pick
+        } else {
+            pendingTieStart = chordID
+        }
+    }
+
+    func deleteTie(id: UUID) {
+        document.ties.removeAll { $0.id == id }
+    }
+
+    func applyAccent(_ type: AccentType, chordID: UUID, partIndex: Int) {
+        for mi in 0..<document.parts[partIndex].measures.count {
+            for ci in 0..<document.parts[partIndex].measures[mi].contents.count {
+                if case .chord(var ch) = document.parts[partIndex].measures[mi].contents[ci], ch.id == chordID {
+                    // Apply to top note (last in sorted order)
+                    if let topIdx = ch.notes.indices.last {
+                        ch.notes[topIdx].accentType = ch.notes[topIdx].accentType == type ? nil : type
+                    }
+                    document.parts[partIndex].measures[mi].contents[ci] = .chord(ch)
+                    return
+                }
+            }
+        }
+    }
+
     func deleteContent(id: UUID, partIndex: Int) {
         guard partIndex < document.parts.count else { return }
         for mi in 0..<document.parts[partIndex].measures.count {
@@ -267,6 +310,7 @@ class ScoreEngine {
             }
         }
         if selectedChordID == id { selectedChordID = nil }
+        document.ties.removeAll { $0.fromChordID == id || $0.toChordID == id }
     }
 
     func moveNote(chordID: UUID, to newPitch: Pitch) {

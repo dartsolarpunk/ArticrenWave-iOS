@@ -176,11 +176,16 @@ struct DraggableStaffRow: View {
     let partIndex: Int
     let part: Part
 
-    let lineSpacing: CGFloat  = 9
-    let measureWidth: CGFloat = 220
+    let lineSpacing: CGFloat = 9
+    let slotUnitW:   CGFloat = 52   // width of one beat-slot (one symbol design unit)
 
     var staffH: CGFloat { lineSpacing * 4 }
     var rowH:   CGFloat { staffH + 70 }
+
+    func widthFor(_ measure: Measure) -> CGFloat {
+        // Measure width stretches with its slot content (16 sixteenths → 16 slots wide)
+        CGFloat(measure.totalSlotUnits) * slotUnitW + 32
+    }
 
     var body: some View {
         VStack(alignment: .leading, spacing: 4) {
@@ -189,23 +194,157 @@ struct DraggableStaffRow: View {
                 .foregroundColor(.white.opacity(0.4))
 
             ScrollView(.horizontal, showsIndicators: false) {
-                HStack(spacing: 0) {
-                    SafeClefView(clef: part.clef, lineSpacing: lineSpacing)
-                        .frame(width: 48, height: rowH)
+                ZStack(alignment: .topLeading) {
+                    HStack(spacing: 0) {
+                        SafeClefView(clef: part.clef, lineSpacing: lineSpacing)
+                            .frame(width: 48, height: rowH)
 
-                    ForEach(Array(part.measures.enumerated()), id: \.element.id) { mi, measure in
-                        DraggableMeasureView(
-                            measure:      measure,
-                            partIndex:    partIndex,
-                            measureIndex: mi,
-                            clef:         part.clef,
-                            lineSpacing:  lineSpacing,
-                            width:        measureWidth,
-                            rowH:         rowH
-                        )
+                        ForEach(Array(part.measures.enumerated()), id: \.element.id) { mi, measure in
+                            DraggableMeasureView(
+                                measure:      measure,
+                                partIndex:    partIndex,
+                                measureIndex: mi,
+                                clef:         part.clef,
+                                lineSpacing:  lineSpacing,
+                                width:        widthFor(measure),
+                                rowH:         rowH
+                            )
+                        }
+                    }
+
+                    // Tie/slur Bezier overlay — spans measures within this part
+                    TieOverlayView(
+                        part: part, partIndex: partIndex,
+                        lineSpacing: lineSpacing, slotUnitW: slotUnitW,
+                        rowH: rowH, clefW: 48
+                    )
+                    .allowsHitTesting(true)
+                }
+            }
+        }
+    }
+}
+
+// MARK: - Tie / Slur overlay (Bezier curves with draggable control handle)
+struct TieOverlayView: View {
+    @Environment(AppState.self)    private var appState
+    @Environment(ScoreEngine.self) private var scoreEngine
+    let part: Part
+    let partIndex: Int
+    let lineSpacing: CGFloat
+    let slotUnitW:   CGFloat
+    let rowH: CGFloat
+    let clefW: CGFloat
+
+    var staffH: CGFloat { lineSpacing * 4 }
+
+    // Locate a chord's global position within the row: (xCenter, topNoteY, bottomNoteY)
+    func locate(_ chordID: UUID) -> (x: CGFloat, topY: CGFloat, botY: CGFloat)? {
+        var runningX = clefW
+        for measure in part.measures {
+            var cum: Double = 0
+            for content in measure.contents {
+                let units = content.slotUnits
+                if case .chord(let ch) = content, ch.id == chordID {
+                    let x = runningX + 16 + CGFloat(cum + units / 2) * slotUnitW
+                    let ys = ch.notes.map { yFor($0.pitch.staffPosition) }
+                    return (x, ys.min() ?? rowH/2, ys.max() ?? rowH/2)
+                }
+                cum += units
+            }
+            runningX += CGFloat(measure.totalSlotUnits) * slotUnitW + 32
+        }
+        return nil
+    }
+
+    func yFor(_ staffPos: Int) -> CGFloat {
+        rowH / 2 - CGFloat(staffPos - part.clef.middleCOffset) * (lineSpacing / 2)
+    }
+
+    var partTies: [Tie] {
+        scoreEngine.document.ties.filter { locate($0.fromChordID) != nil && locate($0.toChordID) != nil }
+    }
+
+    var body: some View {
+        ZStack(alignment: .topLeading) {
+            ForEach(partTies) { tie in
+                if let a = locate(tie.fromChordID), let b = locate(tie.toChordID) {
+                    TieCurve(tie: tie, a: a, b: b, accent: appState.theme.accent) { dx, dy in
+                        if let idx = scoreEngine.document.ties.firstIndex(where: { $0.id == tie.id }) {
+                            scoreEngine.document.ties[idx].controlDX = dx
+                            scoreEngine.document.ties[idx].controlDY = dy
+                        }
+                    } onDelete: {
+                        scoreEngine.deleteTie(id: tie.id)
                     }
                 }
             }
+            // Pending tie start indicator
+            if let pending = scoreEngine.pendingTieStart, let p = locate(pending) {
+                Circle()
+                    .stroke(appState.theme.accent, lineWidth: 2)
+                    .frame(width: 22, height: 22)
+                    .position(x: p.x, y: p.topY - 16)
+            }
+        }
+        .frame(height: rowH, alignment: .topLeading)
+    }
+}
+
+struct TieCurve: View {
+    let tie: Tie
+    let a: (x: CGFloat, topY: CGFloat, botY: CGFloat)
+    let b: (x: CGFloat, topY: CGFloat, botY: CGFloat)
+    let accent: Color
+    let onControlChange: (Double, Double) -> Void
+    let onDelete: () -> Void
+
+    @State private var dragCtl: CGSize? = nil
+
+    var startPt: CGPoint {
+        tie.isSlur ? CGPoint(x: a.x, y: a.botY + 12) : CGPoint(x: a.x, y: a.topY - 12)
+    }
+    var endPt: CGPoint {
+        tie.isSlur ? CGPoint(x: b.x, y: b.botY + 12) : CGPoint(x: b.x, y: b.topY - 12)
+    }
+    var ctlPt: CGPoint {
+        let midX = (startPt.x + endPt.x) / 2
+        let midY = (startPt.y + endPt.y) / 2
+        let arch: CGFloat = tie.isSlur ? 26 : -26   // slur dips down, tie arcs up
+        let dx = dragCtl?.width  ?? CGFloat(tie.controlDX)
+        let dy = dragCtl?.height ?? CGFloat(tie.controlDY)
+        return CGPoint(x: midX + dx, y: midY + arch + dy)
+    }
+
+    var body: some View {
+        ZStack {
+            Path { p in
+                p.move(to: startPt)
+                p.addQuadCurve(to: endPt, control: ctlPt)
+            }
+            .stroke(Color.white.opacity(0.85),
+                    style: StrokeStyle(lineWidth: 1.8, lineCap: .round))
+
+            // Draggable tangent handle at curve midpoint
+            Circle()
+                .fill(accent.opacity(0.9))
+                .frame(width: 10, height: 10)
+                .position(x: (startPt.x + 2*ctlPt.x + endPt.x)/4,
+                          y: (startPt.y + 2*ctlPt.y + endPt.y)/4)
+                .gesture(
+                    DragGesture(minimumDistance: 2)
+                        .onChanged { v in
+                            dragCtl = CGSize(
+                                width:  CGFloat(tie.controlDX) + v.translation.width,
+                                height: CGFloat(tie.controlDY) + v.translation.height
+                            )
+                        }
+                        .onEnded { _ in
+                            if let d = dragCtl { onControlChange(Double(d.width), Double(d.height)) }
+                            dragCtl = nil
+                        }
+                )
+                .onLongPressGesture { onDelete() }
         }
     }
 }
@@ -235,7 +374,21 @@ struct DraggableMeasureView: View {
     @State private var lassoEnd:      CGPoint? = nil
     @State private var lassoSelected: Set<UUID> = []
 
+    // Slot-based X: cumulative slot units before this content + half its own span
+    func xForContent(_ id: UUID) -> CGFloat {
+        var cum: Double = 0
+        for content in measure.contents {
+            let units = content.slotUnits
+            if content.id == id { return 16 + CGFloat(cum + units / 2) * slotUnitW }
+            cum += units
+        }
+        return 16 + CGFloat(cum) * slotUnitW
+    }
+    var usedSlotUnits: Double { measure.contents.reduce(0) { $0 + $1.slotUnits } }
+    var slotUnitW: CGFloat { 52 }
+
     func xFor(_ beat: Double) -> CGFloat {
+        // Legacy fallback (playback cursor etc.)
         16 + CGFloat(beat / 4.0) * (width - 32)
     }
 
@@ -304,9 +457,9 @@ struct DraggableMeasureView: View {
                     Group {
                         ForEach(chord.notes) { note in
                             let yPos = yFor(note.pitch.staffPosition) + (isDragging ? dragOffset.height : 0)
-                            let xPos = xFor(chord.beatPosition)
+                            let xPos = xForContent(chord.id)
                             NoteHeadCanvas(
-                                duration: chord.duration,
+                                duration: note.duration,
                                 xPos: xPos,
                                 yPos: yPos,
                                 lineSpacing: lineSpacing,
@@ -321,16 +474,33 @@ struct DraggableMeasureView: View {
                                     .position(x: xPos - lineSpacing * 1.5, y: yPos)
                             }
                         }
-                        // Stem
-                        if chord.duration != .whole, let first = chord.notes.first {
-                            let sY = yFor(first.pitch.staffPosition) + (isDragging ? dragOffset.height : 0)
-                            StemView(xPos: xFor(chord.beatPosition), headY: sY,
-                                     tailCount: chord.duration.tailCount,
-                                     isSelected: isSelected, accent: appState.theme.accent)
+                        // Stems — one per note, tails per that note's duration
+                        ForEach(chord.notes) { note in
+                            if note.duration != .whole {
+                                let sY = yFor(note.pitch.staffPosition) + (isDragging ? dragOffset.height : 0)
+                                StemView(xPos: xForContent(chord.id), headY: sY,
+                                         tailCount: note.duration.tailCount,
+                                         isSelected: isSelected, accent: appState.theme.accent)
+                            }
+                        }
+                        // Ascend/descend accent arrows — below whole chord + note indicator
+                        ForEach(chord.notes.filter { $0.accentType != nil }) { note in
+                            let botY = (chord.notes.map { yFor($0.pitch.staffPosition) }.max() ?? rowH/2)
+                            HStack(spacing: 2) {
+                                Image(systemName: note.accentType == .ascend ? "chevron.left" : "chevron.right")
+                                    .font(.system(size: 11, weight: .bold))
+                                    .foregroundColor(.white.opacity(0.9))
+                                if chord.notes.count > 1 {
+                                    Text(note.pitch.displayName)
+                                        .font(.system(size: 7, design: .monospaced))
+                                        .foregroundColor(appState.theme.accent)
+                                }
+                            }
+                            .position(x: xForContent(chord.id), y: botY + 22)
                         }
                     }
                     .contentShape(Rectangle().size(CGSize(width: 40, height: 80))
-                        .offset(x: xFor(chord.beatPosition) - 20, y: 0))
+                        .offset(x: xForContent(chord.id) - 20, y: 0))
                     .simultaneousGesture(
                         DragGesture(minimumDistance: 4)
                             .onChanged { val in
@@ -369,8 +539,11 @@ struct DraggableMeasureView: View {
                         switch scoreEngine.editMode {
                         case .delete:
                             scoreEngine.deleteContent(id: chord.id, partIndex: partIndex)
+                        case .addTie, .addSlur:
+                            scoreEngine.handleTieTap(chordID: chord.id)
+                        case .addAccent(let type):
+                            scoreEngine.applyAccent(type, chordID: chord.id, partIndex: partIndex)
                         case .move:
-                            // Tap in move mode selects the note
                             scoreEngine.selectedChordID = chord.id
                         default:
                             scoreEngine.selectedChordID = chord.id
@@ -380,7 +553,7 @@ struct DraggableMeasureView: View {
                 case .rest(let rest):
                     SafeRestView(
                         symbol: restSymbol(rest.duration),
-                        xPos: xFor(rest.beatPosition),
+                        xPos: xForContent(rest.id),
                         yPos: rowH / 2
                     )
                     .onTapGesture {
@@ -418,6 +591,21 @@ struct DraggableMeasureView: View {
                         .font(.system(size: 9))
                         .foregroundColor(appState.theme.accent)
                         .position(x: gPos.x, y: gPos.y - 14)
+                }
+            }
+
+            // Remaining-beats placeholder slots (must be filled with notes or rests)
+            if measure.remainingBeats > 0 && !measure.contents.isEmpty {
+                let remaining = Int(measure.remainingBeats.rounded(.up))
+                ForEach(0..<remaining, id: \.self) { i in
+                    RoundedRectangle(cornerRadius: 4)
+                        .stroke(style: StrokeStyle(lineWidth: 0.8, dash: [3,3]))
+                        .foregroundColor(.white.opacity(0.12))
+                        .frame(width: slotUnitW - 14, height: staffH + 8)
+                        .position(
+                            x: 16 + CGFloat(usedSlotUnits + Double(i) + 0.5) * slotUnitW,
+                            y: rowH / 2
+                        )
                 }
             }
 

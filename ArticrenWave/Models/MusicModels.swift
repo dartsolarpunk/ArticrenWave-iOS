@@ -115,7 +115,8 @@ struct ScoreNote: Identifiable, Codable {
     var pitch: Pitch
     var duration: NoteDuration
     var accidental: Accidental = .none
-    var hasAccent: Bool = false   // accent/marcato symbol
+    var hasAccent: Bool = false   // legacy
+    var accentType: AccentType? = nil
 }
 
 // MARK: - Chord (up to 4 notes, stacked within 4-note range)
@@ -178,6 +179,8 @@ enum BeatContent: Identifiable, Codable {
         case .rest(let r): return r.beatPosition
         }
     }
+    // Slot units: each symbol occupies at least 1 slot; longer notes span their beats
+    var slotUnits: Double { max(1.0, beats) }
 }
 
 // MARK: - Articulation
@@ -185,7 +188,15 @@ struct Tie: Identifiable, Codable {
     var id: UUID = UUID()
     var fromChordID: UUID
     var toChordID: UUID
-    var isSlur: Bool  // false = tie (above), true = slur (below)
+    var isSlur: Bool  // false = tie/carry (arcs ABOVE), true = slur (dips BELOW)
+    var controlDX: Double = 0
+    var controlDY: Double = 0
+}
+
+// MARK: - Accent arrows (ascend = left arrow, descend = right arrow)
+enum AccentType: String, Codable {
+    case ascend
+    case descend
 }
 
 // MARK: - Measure
@@ -195,6 +206,7 @@ struct Measure: Identifiable, Codable {
     var ties: [Tie] = []
 
     var totalBeats: Double { contents.reduce(0) { $0 + $1.beats } }
+    var totalSlotUnits: Double { max(4.0, contents.reduce(0) { $0 + $1.slotUnits } + max(0, remainingBeats)) }
     var remainingBeats: Double { 4.0 - totalBeats }
     var isFull: Bool { totalBeats >= 4.0 }
 
@@ -291,6 +303,7 @@ enum ScoreLayoutPreset: String, CaseIterable {
 // MARK: - Score Document
 struct ScoreDocument: Identifiable, Codable {
     var id: UUID = UUID()
+    var ties: [Tie] = []
     var title: String = "Untitled Score"
     var tempo: Int = 80  // BPM
     var parts: [Part] = []

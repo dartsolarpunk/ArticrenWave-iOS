@@ -83,10 +83,10 @@ class AWAudioPlayer {
         engine.connect(reverbNode, to: engine.mainMixerNode, format: nil)
         do { try engine.start() } catch { print("Engine: \(error)") }
         if !playerNode.isPlaying { playerNode.play() }
-        // Pre-warm C3–C6 piano buffers
+        // Pre-warm full piano range for instant key response
         synthQ.async { [weak self] in
             guard let self else { return }
-            for m in 48...72 { _ = self.buildBuf(midi: m, dur: 0.8, prog: 0) }
+            for m in 21...108 { _ = self.buildBuf(midi: m, dur: 0.8, prog: 0) }
         }
     }
 
@@ -133,16 +133,22 @@ class AWAudioPlayer {
                 let noise = sin(2*Double.pi*freq*0.71*t) * exp(-t*12.0) * 0.3
                 s = (tump + noise) * 0.5
 
-            default:        // Piano — piano-quality additive synthesis
-                let d1 = exp(-t * 2.8)
-                let d2 = exp(-t * 4.5)
-                let d3 = exp(-t * 7.0)
-                let d4 = exp(-t * 12.0)
-                let p1 = sin(2*Double.pi*freq*t)   * d1
-                let p2 = sin(2*Double.pi*freq*2*t) * d2 * 0.32
-                let p3 = sin(2*Double.pi*freq*3*t) * d3 * 0.12
-                let p4 = sin(2*Double.pi*freq*4*t) * d4 * 0.06
-                s = (p1 + p2 + p3 + p4) * env * 0.40
+            default:        // Piano — detuned unison strings + hammer transient
+                let d1 = exp(-t * 2.6)
+                let d2 = exp(-t * 4.2)
+                let d3 = exp(-t * 6.8)
+                let d4 = exp(-t * 11.0)
+                // Real pianos have 2-3 slightly detuned strings per note
+                let u1 = sin(2*Double.pi*freq*t)
+                let u2 = sin(2*Double.pi*freq*1.0015*t)
+                let u3 = sin(2*Double.pi*freq*0.9985*t)
+                let p1 = (u1 + u2*0.7 + u3*0.7) / 2.4 * d1
+                let p2 = sin(2*Double.pi*freq*2.001*t) * d2 * 0.34
+                let p3 = sin(2*Double.pi*freq*3.003*t) * d3 * 0.13
+                let p4 = sin(2*Double.pi*freq*4.006*t) * d4 * 0.05
+                // Hammer strike transient (first ~30ms)
+                let hammer = t < 0.03 ? sin(2*Double.pi*freq*6.2*t) * exp(-t*90) * 0.25 : 0
+                s = (p1 + p2 + p3 + p4 + hammer) * env * 0.42
             }
 
             // Stereo spread based on octave
@@ -160,6 +166,15 @@ class AWAudioPlayer {
         guard engine.isRunning else { return }
         let midi = max(21, min(108, pitch.midiNote))
         let prog = AWInstrument.find(instrumentName).midiProgram
+        let key  = (midi << 8) | Int(prog)
+
+        // INSTANT path: cached buffer schedules with zero latency
+        if let cached = bufCache[key] {
+            if !playerNode.isPlaying { playerNode.play() }
+            playerNode.scheduleBuffer(cached)
+            return
+        }
+        // Cold path: synth in background then play
         synthQ.async { [weak self] in
             guard let self else { return }
             let buf = self.buildBuf(midi: midi, dur: duration, prog: prog)
@@ -168,6 +183,16 @@ class AWAudioPlayer {
                 if !self.playerNode.isPlaying { self.playerNode.play() }
                 self.playerNode.scheduleBuffer(buf)
             }
+        }
+    }
+
+    /// Pre-warm the FULL 88-key range for an instrument so every key is instant
+    func prewarm(instrumentName: String) {
+        if !isSetup { setup() }
+        let prog = AWInstrument.find(instrumentName).midiProgram
+        synthQ.async { [weak self] in
+            guard let self else { return }
+            for m in 21...108 { _ = self.buildBuf(midi: m, dur: 0.8, prog: prog) }
         }
     }
 

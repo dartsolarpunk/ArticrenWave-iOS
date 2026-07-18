@@ -93,13 +93,20 @@ struct NotePalette: View {
                     accent: appState.theme.accent
                 ) { scoreEngine.editMode = .addSlur }
 
-                // ── ACCENT ──────────────────────────────────────
+                // ── ACCENTS: ascend (<) / descend (>) ───────────
                 PaletteKey(
-                    label: { AccentSymbol(color: isAccent ? appState.theme.accent : .white, size: 14) },
-                    sublabel: "Accent",
-                    isActive: isAccent,
+                    label: { Image(systemName: "chevron.left").font(.system(size: 13, weight: .bold)) },
+                    sublabel: "Ascend",
+                    isActive: isAccentType(.ascend),
                     accent: appState.theme.accent
-                ) { scoreEngine.editMode = .addAccent }
+                ) { scoreEngine.editMode = .addAccent(.ascend) }
+
+                PaletteKey(
+                    label: { Image(systemName: "chevron.right").font(.system(size: 13, weight: .bold)) },
+                    sublabel: "Descend",
+                    isActive: isAccentType(.descend),
+                    accent: appState.theme.accent
+                ) { scoreEngine.editMode = .addAccent(.descend) }
 
                 paletteDivider
 
@@ -153,7 +160,9 @@ struct NotePalette: View {
     var isMove:   Bool { if case .move      = scoreEngine.editMode { return true }; return false }
     var isTie:    Bool { if case .addTie    = scoreEngine.editMode { return true }; return false }
     var isSlur:   Bool { if case .addSlur   = scoreEngine.editMode { return true }; return false }
-    var isAccent: Bool { if case .addAccent = scoreEngine.editMode { return true }; return false }
+    func isAccentType(_ t: AccentType) -> Bool {
+        if case .addAccent(let a) = scoreEngine.editMode { return a == t }; return false
+    }
     var isDelete: Bool { if case .delete    = scoreEngine.editMode { return true }; return false }
 }
 
