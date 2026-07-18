@@ -142,6 +142,20 @@ struct ComposerTopBar: View {
 
             // Actions
             HStack(spacing: 6) {
+                // Undo / Redo
+                Button { scoreEngine.undo() } label: {
+                    Image(systemName: "arrow.uturn.backward")
+                        .font(.system(size: 13, weight: .medium))
+                        .foregroundColor(scoreEngine.canUndo ? .white.opacity(0.75) : .white.opacity(0.2))
+                        .frame(width: 30, height: 34)
+                }.disabled(!scoreEngine.canUndo)
+                Button { scoreEngine.redo() } label: {
+                    Image(systemName: "arrow.uturn.forward")
+                        .font(.system(size: 13, weight: .medium))
+                        .foregroundColor(scoreEngine.canRedo ? .white.opacity(0.75) : .white.opacity(0.2))
+                        .frame(width: 30, height: 34)
+                }.disabled(!scoreEngine.canRedo)
+
                 TopBarButton(icon: "metronome.fill") { showTempoSheet = true }
                 TopBarButton(icon: "music.note.list") { showLayoutPicker = true }
                 TopBarButton(icon: "square.and.arrow.up") { showExportSheet = true }

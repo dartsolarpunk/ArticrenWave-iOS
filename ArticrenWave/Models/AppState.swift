@@ -162,6 +162,31 @@ class ScoreEngine {
     var document: ScoreDocument   = ScoreDocument.defaultDocument()
     var editMode: ScoreEditMode   = .select
     var selectedChordID: UUID?    = nil
+    var selectedNoteID: UUID? = nil
+
+    // MARK: - Undo / Redo
+    private var undoStack: [ScoreDocument] = []
+    private var redoStack: [ScoreDocument] = []
+    var canUndo: Bool { !undoStack.isEmpty }
+    var canRedo: Bool { !redoStack.isEmpty }
+
+    func snapshot() {
+        undoStack.append(document)
+        if undoStack.count > 50 { undoStack.removeFirst() }
+        redoStack.removeAll()
+    }
+    func undo() {
+        guard let prev = undoStack.popLast() else { return }
+        redoStack.append(document)
+        document = prev
+        selectedChordID = nil; selectedNoteID = nil
+    }
+    func redo() {
+        guard let next = redoStack.popLast() else { return }
+        undoStack.append(document)
+        document = next
+        selectedChordID = nil; selectedNoteID = nil
+    }
     var validationError: String?  = nil
     var isRecording: Bool         = false
     var layoutPreset: ScoreLayoutPreset = .grandStaff
@@ -175,57 +200,17 @@ class ScoreEngine {
         validationError = nil
     }
 
+    // Append a NEW chord at the next beat slot (tap on empty area)
     func inputNote(pitch: Pitch, in partIndex: Int, measureIndex: Int) {
         guard case .addNote(let dur) = editMode else { return }
-        guard partIndex < document.parts.count else { return }
-        guard measureIndex < document.parts[partIndex].measures.count else { return }
+        guard partIndex < document.parts.count,
+              measureIndex < document.parts[partIndex].measures.count else { return }
         var measure = document.parts[partIndex].measures[measureIndex]
-
-        // Check if there's an existing chord at the last beat position
-        // If so, try to add this note to that chord (build a chord)
-        if let lastContentIdx = measure.contents.indices.last,
-           case .chord(var existingChord) = measure.contents[lastContentIdx] {
-
-            // Check if pitch is already in chord → replace it
-            if existingChord.notes.contains(where: { $0.pitch == pitch }) {
-                // Replace: remove old, add new duration
-                existingChord.notes.removeAll { $0.pitch == pitch }
-                existingChord.notes.append(ScoreNote(pitch: pitch, duration: dur))
-                // Update chord duration to longest note
-                existingChord.duration = existingChord.notes.map { $0.duration }.max(by: { $0.beats < $1.beats }) ?? dur
-                measure.contents[lastContentIdx] = .chord(existingChord)
-                document.parts[partIndex].measures[measureIndex] = measure
-                validationError = nil
-                return
-            }
-
-            // Check if we can add to chord (max 4 notes, within 4-staff-position span)
-            if existingChord.notes.count < 4 {
-                let firstSP = existingChord.notes.first?.pitch.staffPosition ?? pitch.staffPosition
-                let newSP   = pitch.staffPosition
-                let span    = abs(newSP - firstSP)
-
-                if span <= 7 {  // within roughly an octave span for chord
-                    var newNote = ScoreNote(pitch: pitch, duration: dur)
-                    existingChord.notes.append(newNote)
-                    // Chord duration = longest note duration
-                    existingChord.duration = existingChord.notes.map { $0.duration }.max(by: { $0.beats < $1.beats }) ?? dur
-                    measure.contents[lastContentIdx] = .chord(existingChord)
-                    document.parts[partIndex].measures[measureIndex] = measure
-                    validationError = nil
-                    selectedChordID = existingChord.id
-                    return
-                }
-                // Too far apart — start new chord
-            }
-        }
-
-        // Start a new chord
         guard measure.remainingBeats >= dur.beats else {
             validationError = "Not enough beats remaining in this measure"
             return
         }
-
+        snapshot()
         let note  = ScoreNote(pitch: pitch, duration: dur)
         var chord = Chord(duration: dur, beatPosition: measure.totalBeats)
         _ = chord.addNote(note)
@@ -233,8 +218,7 @@ class ScoreEngine {
         document.parts[partIndex].measures[measureIndex] = measure
         validationError = nil
         selectedChordID = chord.id
-
-        // Auto-add new measure if full
+        selectedNoteID  = note.id
         if measure.isFull {
             let isLast = measureIndex == document.parts[partIndex].measures.count - 1
             if isLast {
@@ -242,6 +226,64 @@ class ScoreEngine {
                     document.parts[i].measures.append(Measure())
                 }
             }
+        }
+    }
+
+    // Add note to an EXISTING chord (tap directly on that chord's slot).
+    // Same staff position → replace; different → stack (max 4, span ≤7).
+    func addNoteToChord(chordID: UUID, pitch: Pitch, partIndex: Int, measureIndex: Int) {
+        guard case .addNote(let dur) = editMode else { return }
+        guard partIndex < document.parts.count,
+              measureIndex < document.parts[partIndex].measures.count else { return }
+        var measure = document.parts[partIndex].measures[measureIndex]
+        guard let ci = measure.contents.firstIndex(where: { $0.id == chordID }),
+              case .chord(var ch) = measure.contents[ci] else { return }
+
+        let oldBeats = ch.totalBeats
+        var cand = ch
+        if let idx = cand.notes.firstIndex(where: { $0.pitch.staffPosition == pitch.staffPosition }) {
+            cand.notes[idx] = ScoreNote(pitch: pitch, duration: dur)
+        } else {
+            guard cand.notes.count < 4 else { validationError = "Chords hold up to 4 notes"; return }
+            if let first = cand.notes.first,
+               abs(pitch.staffPosition - first.pitch.staffPosition) > 7 {
+                validationError = "Chord notes must stay within an octave span"; return
+            }
+            cand.notes.append(ScoreNote(pitch: pitch, duration: dur))
+            cand.notes.sort { $0.pitch.staffPosition < $1.pitch.staffPosition }
+        }
+        cand.duration = cand.notes.map { $0.duration }.max(by: { $0.beats < $1.beats }) ?? dur
+
+        let newTotal = measure.totalBeats - oldBeats + cand.totalBeats
+        guard newTotal <= 4.0 else {
+            validationError = "Not enough beats remaining in this measure"; return
+        }
+        snapshot()
+        ch = cand
+        measure.contents[ci] = .chord(ch)
+        document.parts[partIndex].measures[measureIndex] = measure
+        validationError = nil
+        selectedChordID = ch.id
+    }
+
+    // Delete one note from a chord (removes chord when empty)
+    func deleteNote(noteID: UUID, chordID: UUID, partIndex: Int) {
+        guard partIndex < document.parts.count else { return }
+        for mi in 0..<document.parts[partIndex].measures.count {
+            guard let ci = document.parts[partIndex].measures[mi].contents.firstIndex(where: { $0.id == chordID }),
+                  case .chord(var ch) = document.parts[partIndex].measures[mi].contents[ci] else { continue }
+            guard ch.notes.contains(where: { $0.id == noteID }) else { continue }
+            snapshot()
+            ch.notes.removeAll { $0.id == noteID }
+            if ch.notes.isEmpty {
+                document.parts[partIndex].measures[mi].contents.remove(at: ci)
+                document.ties.removeAll { $0.fromChordID == chordID || $0.toChordID == chordID }
+            } else {
+                ch.duration = ch.notes.map { $0.duration }.max(by: { $0.beats < $1.beats }) ?? ch.duration
+                document.parts[partIndex].measures[mi].contents[ci] = .chord(ch)
+            }
+            if selectedNoteID == noteID { selectedNoteID = nil }
+            return
         }
     }
 
@@ -272,6 +314,7 @@ class ScoreEngine {
         }
         if let start = pendingTieStart {
             guard start != chordID else { pendingTieStart = nil; return }
+            snapshot()
             document.ties.append(Tie(fromChordID: start, toChordID: chordID, isSlur: isSlur))
             pendingTieStart = nil
             editMode = .select   // auto-toggle off after second pick
@@ -281,6 +324,7 @@ class ScoreEngine {
     }
 
     func deleteTie(id: UUID) {
+        snapshot()
         document.ties.removeAll { $0.id == id }
     }
 
@@ -301,6 +345,11 @@ class ScoreEngine {
 
     func deleteContent(id: UUID, partIndex: Int) {
         guard partIndex < document.parts.count else { return }
+        let exists = document.parts[partIndex].measures.contains { m in
+            m.contents.contains { $0.id == id }
+        }
+        guard exists else { return }
+        snapshot()
         for mi in 0..<document.parts[partIndex].measures.count {
             document.parts[partIndex].measures[mi].contents.removeAll { content in
                 switch content {
@@ -314,6 +363,7 @@ class ScoreEngine {
     }
 
     func moveNote(chordID: UUID, to newPitch: Pitch) {
+        snapshot()
         for pi in 0..<document.parts.count {
             for mi in 0..<document.parts[pi].measures.count {
                 for ci in 0..<document.parts[pi].measures[mi].contents.count {

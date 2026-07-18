@@ -116,7 +116,24 @@ struct NotePalette: View {
                     sublabel: "Erase",
                     isActive: isDelete,
                     accent: .red
-                ) { scoreEngine.editMode = .delete }
+                ) {
+                    // Selection present → delete it now; otherwise enter erase mode
+                    if let cid = scoreEngine.selectedChordID {
+                        if let nid = scoreEngine.selectedNoteID {
+                            for pi in scoreEngine.document.parts.indices {
+                                scoreEngine.deleteNote(noteID: nid, chordID: cid, partIndex: pi)
+                            }
+                        } else {
+                            for pi in scoreEngine.document.parts.indices {
+                                scoreEngine.deleteContent(id: cid, partIndex: pi)
+                            }
+                        }
+                        scoreEngine.selectedChordID = nil
+                        scoreEngine.selectedNoteID  = nil
+                    } else {
+                        scoreEngine.editMode = .delete
+                    }
+                }
             }
             .padding(.horizontal, 10)
             .padding(.vertical, 6)

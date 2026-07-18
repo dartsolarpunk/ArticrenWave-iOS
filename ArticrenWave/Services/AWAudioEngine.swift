@@ -67,22 +67,24 @@ class AWAudioPlayer {
 
     private init() {}
 
-    // MARK: - Setup (main thread only)
+    private let cacheLock = NSLock()
+
+    // MARK: - Setup (main thread only) — resilient, retries until engine runs
     func setup() {
-        guard !isSetup else { return }
-        isSetup = true
+        if isSetup { ensureRunning(); return }
         do {
             try AVAudioSession.sharedInstance().setCategory(.playback, mode: .default, options: [.mixWithOthers])
             try AVAudioSession.sharedInstance().setActive(true)
-        } catch {}
+        } catch { print("Session: \(error)") }
         reverbNode.loadFactoryPreset(.mediumHall)
         reverbNode.wetDryMix = 12
         engine.attach(playerNode)
         engine.attach(reverbNode)
         engine.connect(playerNode, to: reverbNode, format: nil)
         engine.connect(reverbNode, to: engine.mainMixerNode, format: nil)
-        do { try engine.start() } catch { print("Engine: \(error)") }
+        do { try engine.start() } catch { print("Engine: \(error)"); return }
         if !playerNode.isPlaying { playerNode.play() }
+        isSetup = true   // only after successful start
         // Pre-warm full piano range for instant key response
         synthQ.async { [weak self] in
             guard let self else { return }
@@ -91,9 +93,20 @@ class AWAudioPlayer {
     }
 
     // MARK: - Synthesize PCM buffer (background)
+    /// Restart engine/session if iOS suspended them (app init, interruptions, route changes)
+    private func ensureRunning() {
+        if !engine.isRunning {
+            try? AVAudioSession.sharedInstance().setActive(true)
+            try? engine.start()
+        }
+        if engine.isRunning && !playerNode.isPlaying { playerNode.play() }
+    }
+
     func buildBuf(midi: Int, dur: Double, prog: UInt8) -> AVAudioPCMBuffer? {
         let key = (midi << 8) | Int(prog)
-        if let cached = bufCache[key] { return cached }
+        cacheLock.lock()
+        if let cached = bufCache[key] { cacheLock.unlock(); return cached }
+        cacheLock.unlock()
         let fc   = Int(sr * min(dur + 0.1, 3.5))
         let freq = 440.0 * pow(2.0, (Double(midi) - 69.0) / 12.0)
         guard let fmt = AVAudioFormat(standardFormatWithSampleRate: sr, channels: 2),
@@ -156,20 +169,24 @@ class AWAudioPlayer {
             L[i] = Float(s) * (1.0 - spread * 0.15)
             R[i] = Float(s) * (1.0 + spread * 0.15)
         }
-        bufCache[key] = buf
+        cacheLock.lock(); bufCache[key] = buf; cacheLock.unlock()
         return buf
     }
 
     // MARK: - Play single pitch (call from main thread)
     func playPitch(_ pitch: Pitch, instrumentName: String = "Grand Piano", duration: Double = 0.5) {
-        if !isSetup { setup() }
-        guard engine.isRunning else { return }
+        setup()
         let midi = max(21, min(108, pitch.midiNote))
         let prog = AWInstrument.find(instrumentName).midiProgram
         let key  = (midi << 8) | Int(prog)
+        ensureRunning()
+        guard engine.isRunning else { return }
 
         // INSTANT path: cached buffer schedules with zero latency
-        if let cached = bufCache[key] {
+        cacheLock.lock()
+        let cachedBuf = bufCache[key]
+        cacheLock.unlock()
+        if let cached = cachedBuf {
             if !playerNode.isPlaying { playerNode.play() }
             playerNode.scheduleBuffer(cached)
             return
@@ -198,7 +215,8 @@ class AWAudioPlayer {
 
     // MARK: - Score playback (main thread)
     func play(document: ScoreDocument) {
-        if !isSetup { setup() }
+        setup()
+        ensureRunning()
         if isPlaying && !isPaused { return }
         if !isPaused { currentBeat = 0 }
         isPlaying = true; isPaused = false

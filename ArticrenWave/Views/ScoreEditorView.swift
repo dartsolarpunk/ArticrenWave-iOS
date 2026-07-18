@@ -6,6 +6,7 @@ struct ScoreEditorView: View {
     @Environment(AppState.self)    private var appState
     @Environment(ScoreEngine.self) private var scoreEngine
     @State private var zoomScale: CGFloat = 1.0
+    @State private var baseZoom:  CGFloat = 1.0
     @State private var panOffset: CGSize  = .zero
 
     var body: some View {
@@ -21,11 +22,12 @@ struct ScoreEditorView: View {
                         )
                 }
                 .background(Color(hex: "#080910"))
-                .gesture(
+                .simultaneousGesture(
                     MagnificationGesture()
                         .onChanged { v in
-                            zoomScale = max(0.4, min(3.0, v))
+                            zoomScale = max(0.4, min(3.0, baseZoom * v))
                         }
+                        .onEnded { _ in baseZoom = zoomScale }
                 )
             }
         }
@@ -384,6 +386,17 @@ struct DraggableMeasureView: View {
         }
         return 16 + CGFloat(cum) * slotUnitW
     }
+    func contentAt(x: CGFloat) -> BeatContent? {
+        var cum: Double = 0
+        for content in measure.contents {
+            let units = content.slotUnits
+            let x0 = 16 + CGFloat(cum) * slotUnitW
+            let x1 = 16 + CGFloat(cum + units) * slotUnitW
+            if x >= x0 && x < x1 { return content }
+            cum += units
+        }
+        return nil
+    }
     var usedSlotUnits: Double { measure.contents.reduce(0) { $0 + $1.slotUnits } }
     var slotUnitW: CGFloat { 52 }
 
@@ -452,7 +465,8 @@ struct DraggableMeasureView: View {
             ForEach(measure.contents) { content in
                 switch content {
                 case .chord(let chord):
-                    let isSelected = lassoSelected.contains(chord.id) || scoreEngine.selectedChordID == chord.id
+                    let chordSel = lassoSelected.contains(chord.id) || scoreEngine.selectedChordID == chord.id
+                    let isSelected = chordSel
                     let isDragging = draggingID == chord.id
                     Group {
                         ForEach(chord.notes) { note in
@@ -463,7 +477,7 @@ struct DraggableMeasureView: View {
                                 xPos: xPos,
                                 yPos: yPos,
                                 lineSpacing: lineSpacing,
-                                isSelected: isSelected,
+                                isSelected: chordSel && (scoreEngine.selectedNoteID == nil || scoreEngine.selectedNoteID == note.id),
                                 accent: appState.theme.accent
                             )
                             // Accidental
@@ -528,27 +542,19 @@ struct DraggableMeasureView: View {
                             }
                             .onEnded { val in
                                 if draggingID == chord.id, let gp = ghostPitch {
-                                    moveChord(chord: chord, newPitch: gp)
+                                    if let nid = scoreEngine.selectedNoteID,
+                                       chord.notes.contains(where: { $0.id == nid }) {
+                                        moveSingleNote(chord: chord, noteID: nid, newPitch: gp)
+                                    } else {
+                                        moveChord(chord: chord, newPitch: gp)
+                                    }
                                 }
                                 draggingID = nil
                                 dragOffset  = .zero
                                 ghostPitch  = nil
                             }
                     )
-                    .onTapGesture {
-                        switch scoreEngine.editMode {
-                        case .delete:
-                            scoreEngine.deleteContent(id: chord.id, partIndex: partIndex)
-                        case .addTie, .addSlur:
-                            scoreEngine.handleTieTap(chordID: chord.id)
-                        case .addAccent(let type):
-                            scoreEngine.applyAccent(type, chordID: chord.id, partIndex: partIndex)
-                        case .move:
-                            scoreEngine.selectedChordID = chord.id
-                        default:
-                            scoreEngine.selectedChordID = chord.id
-                        }
-                    }
+
 
                 case .rest(let rest):
                     SafeRestView(
@@ -623,24 +629,61 @@ struct DraggableMeasureView: View {
                 .gesture(
                     DragGesture(minimumDistance: 0)
                         .onChanged { val in
-                            if case .select = scoreEngine.editMode {
+                            switch scoreEngine.editMode {
+                            case .select:
                                 // Lasso
                                 if lassoStart == nil { lassoStart = val.startLocation }
                                 lassoEnd = val.location
                                 updateLassoSelection()
-                            } else {
+                            case .move:
+                                // Drag a note/chord from wherever the touch started
+                                if draggingID == nil {
+                                    if let hit = contentAt(x: val.startLocation.x),
+                                       case .chord(let ch) = hit {
+                                        draggingID = ch.id
+                                        scoreEngine.selectedChordID = ch.id
+                                        // Nearest note at touch start = single-note move target
+                                        let nearest = ch.notes.min(by: {
+                                            abs(yFor($0.pitch.staffPosition) - val.startLocation.y) <
+                                            abs(yFor($1.pitch.staffPosition) - val.startLocation.y)
+                                        })
+                                        scoreEngine.selectedNoteID = nearest?.id
+                                    }
+                                }
+                                if draggingID != nil {
+                                    dragOffset = val.translation
+                                    let sp = staffPosAt(y: val.location.y)
+                                    ghostPitch = pitchAt(staffPos: sp)
+                                }
+                            default:
                                 ghostPos   = val.location
                                 let sp     = staffPosAt(y: val.location.y)
                                 ghostPitch = pitchAt(staffPos: sp)
                             }
                         }
                         .onEnded { val in
-                            if case .select = scoreEngine.editMode {
+                            let isTap = abs(val.translation.width) < 6 && abs(val.translation.height) < 6
+                            switch scoreEngine.editMode {
+                            case .select:
                                 lassoStart = nil; lassoEnd = nil
-                            } else {
+                                if isTap { handleTap(at: val.location) }
+                            case .move:
+                                if let dragID = draggingID, !isTap, let gp = ghostPitch,
+                                   let hit = measure.contents.first(where: { $0.id == dragID }),
+                                   case .chord(let ch) = hit {
+                                    if let nid = scoreEngine.selectedNoteID,
+                                       ch.notes.contains(where: { $0.id == nid }) {
+                                        moveSingleNote(chord: ch, noteID: nid, newPitch: gp)
+                                    } else {
+                                        moveChord(chord: ch, newPitch: gp)
+                                    }
+                                } else if isTap {
+                                    handleTap(at: val.location)
+                                }
+                                draggingID = nil; dragOffset = .zero; ghostPitch = nil
+                            default:
                                 handleTap(at: val.location)
-                                ghostPos   = nil
-                                ghostPitch = nil
+                                ghostPos = nil; ghostPitch = nil
                             }
                         }
                 )
@@ -651,19 +694,86 @@ struct DraggableMeasureView: View {
     func handleTap(at loc: CGPoint) {
         let sp    = staffPosAt(y: loc.y)
         let pitch = pitchAt(staffPos: sp)
+
+        // Which content slot (if any) was tapped?
+        var cum: Double = 0
+        var hit: BeatContent? = nil
+        for content in measure.contents {
+            let units = content.slotUnits
+            let x0 = 16 + CGFloat(cum) * slotUnitW
+            let x1 = 16 + CGFloat(cum + units) * slotUnitW
+            if loc.x >= x0 && loc.x < x1 { hit = content; break }
+            cum += units
+        }
+
         switch scoreEngine.editMode {
         case .addNote:
-            scoreEngine.inputNote(pitch: pitch, in: partIndex, measureIndex: measureIndex)
+            if let hit, case .chord(let ch) = hit {
+                // Tap ON an existing chord slot → build/replace within that chord
+                scoreEngine.addNoteToChord(chordID: ch.id, pitch: pitch,
+                                           partIndex: partIndex, measureIndex: measureIndex)
+            } else {
+                // Empty area → append a new beat
+                scoreEngine.inputNote(pitch: pitch, in: partIndex, measureIndex: measureIndex)
+            }
         case .addRest:
             scoreEngine.inputRest(in: partIndex, measureIndex: measureIndex)
         case .select, .move:
-            // Deselect when tapping empty area
-            scoreEngine.selectedChordID = nil
+            if let hit, case .chord(let ch) = hit {
+                // Nearest note in the chord by Y = individual note selection
+                let nearest = ch.notes.min(by: {
+                    abs(yFor($0.pitch.staffPosition) - loc.y) < abs(yFor($1.pitch.staffPosition) - loc.y)
+                })
+                scoreEngine.selectedChordID = ch.id
+                scoreEngine.selectedNoteID  = nearest?.id
+            } else {
+                scoreEngine.selectedChordID = nil
+                scoreEngine.selectedNoteID  = nil
+            }
+        case .delete:
+            if let hit, case .chord(let ch) = hit {
+                let nearest = ch.notes.min(by: {
+                    abs(yFor($0.pitch.staffPosition) - loc.y) < abs(yFor($1.pitch.staffPosition) - loc.y)
+                })
+                if ch.notes.count > 1, let n = nearest {
+                    scoreEngine.deleteNote(noteID: n.id, chordID: ch.id, partIndex: partIndex)
+                } else {
+                    scoreEngine.deleteContent(id: ch.id, partIndex: partIndex)
+                }
+            } else if let hit, case .rest(let r) = hit {
+                scoreEngine.deleteContent(id: r.id, partIndex: partIndex)
+            }
+        case .addTie, .addSlur:
+            if let hit, case .chord(let ch) = hit {
+                scoreEngine.handleTieTap(chordID: ch.id)
+            }
+        case .addAccent(let type):
+            if let hit, case .chord(let ch) = hit {
+                scoreEngine.applyAccent(type, chordID: ch.id, partIndex: partIndex)
+            }
         default: break
         }
     }
 
+
+    func moveSingleNote(chord: Chord, noteID: UUID, newPitch: Pitch) {
+        scoreEngine.snapshot()
+        for mi in 0..<scoreEngine.document.parts[partIndex].measures.count {
+            for ci in 0..<scoreEngine.document.parts[partIndex].measures[mi].contents.count {
+                if case .chord(var c2) = scoreEngine.document.parts[partIndex].measures[mi].contents[ci],
+                   c2.id == chord.id,
+                   let ni = c2.notes.firstIndex(where: { $0.id == noteID }) {
+                    c2.notes[ni].pitch = newPitch
+                    c2.notes.sort { $0.pitch.staffPosition < $1.pitch.staffPosition }
+                    scoreEngine.document.parts[partIndex].measures[mi].contents[ci] = .chord(c2)
+                    return
+                }
+            }
+        }
+    }
+
     func moveChord(chord: Chord, newPitch: Pitch) {
+        scoreEngine.snapshot()
         // Calculate the staff position delta from the original first note to new pitch
         guard let firstNote = chord.notes.first else { return }
         let delta = newPitch.staffPosition - firstNote.pitch.staffPosition
