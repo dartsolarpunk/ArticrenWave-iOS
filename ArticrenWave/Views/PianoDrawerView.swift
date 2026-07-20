@@ -184,6 +184,13 @@ struct PianoKeyboardView: View {
                     proxy.scrollTo("w\(oct)\(pc)", anchor: .center)
                 }
             }
+            .onAppear {
+                // Initial position: centre on the selected octave (default 4 = middle C area)
+                let pc = PitchClass.C.rawValue
+                DispatchQueue.main.async {
+                    proxy.scrollTo("w\(jumpOctave)\(pc)", anchor: .center)
+                }
+            }
         }
     }
 }

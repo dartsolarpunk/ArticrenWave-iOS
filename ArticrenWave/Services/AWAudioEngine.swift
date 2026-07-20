@@ -139,7 +139,10 @@ class AWAudioPlayer {
 
             case 46:        // Harp — pluck with fast decay
                 let decay = exp(-t * 8.0)
-                s = (sin(2*Double.pi*freq*t) + sin(2*Double.pi*freq*2*t)*0.25) * decay * 0.45
+                let lowH  = freq < 131.0 ? 0.45 : 0.25
+                let f1g   = freq < 131.0 ? 0.55 : 1.0
+                s = (sin(2*Double.pi*freq*t)*f1g + sin(2*Double.pi*freq*2*t)*lowH
+                   + sin(2*Double.pi*freq*3*t)*(lowH*0.5)) * decay * 0.45
 
             case 47:        // Timpani — pitched noise + thump
                 let tump  = sin(2*Double.pi*freq*t) * exp(-t*5.0)
@@ -151,14 +154,22 @@ class AWAudioPlayer {
                 let d2 = exp(-t * 4.2)
                 let d3 = exp(-t * 6.8)
                 let d4 = exp(-t * 11.0)
+                // Phone speakers can't reproduce fundamentals below ~130Hz.
+                // For low notes, shift energy into harmonics (missing-fundamental effect
+                // lets the ear still hear the correct low pitch).
+                let lowBoost = freq < 131.0 ? min(1.0, (131.0 - freq) / 100.0) : 0.0
+                let f1Gain = 1.0 - lowBoost * 0.65
+                let h2Gain = 0.34 + lowBoost * 0.55
+                let h3Gain = 0.13 + lowBoost * 0.40
+                let h4Gain = 0.05 + lowBoost * 0.25
                 // Real pianos have 2-3 slightly detuned strings per note
                 let u1 = sin(2*Double.pi*freq*t)
                 let u2 = sin(2*Double.pi*freq*1.0015*t)
                 let u3 = sin(2*Double.pi*freq*0.9985*t)
-                let p1 = (u1 + u2*0.7 + u3*0.7) / 2.4 * d1
-                let p2 = sin(2*Double.pi*freq*2.001*t) * d2 * 0.34
-                let p3 = sin(2*Double.pi*freq*3.003*t) * d3 * 0.13
-                let p4 = sin(2*Double.pi*freq*4.006*t) * d4 * 0.05
+                let p1 = (u1 + u2*0.7 + u3*0.7) / 2.4 * d1 * f1Gain
+                let p2 = sin(2*Double.pi*freq*2.001*t) * d2 * h2Gain
+                let p3 = sin(2*Double.pi*freq*3.003*t) * d3 * h3Gain
+                let p4 = sin(2*Double.pi*freq*4.006*t) * d4 * h4Gain
                 // Hammer strike transient (first ~30ms)
                 let hammer = t < 0.03 ? sin(2*Double.pi*freq*6.2*t) * exp(-t*90) * 0.25 : 0
                 s = (p1 + p2 + p3 + p4 + hammer) * env * 0.42

@@ -25,7 +25,8 @@ struct ScoreEditorView: View {
                 .simultaneousGesture(
                     MagnificationGesture()
                         .onChanged { v in
-                            zoomScale = max(0.4, min(3.0, baseZoom * v))
+                            // Damped: pow < 1 slows the zoom rate for finer control
+                            zoomScale = max(0.4, min(3.0, baseZoom * pow(v, 0.55)))
                         }
                         .onEnded { _ in baseZoom = zoomScale }
                 )
