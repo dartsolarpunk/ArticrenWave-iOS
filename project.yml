@@ -47,6 +47,7 @@ targets:
         CODE_SIGN_IDENTITY: "iPhone Distribution"
         PROVISIONING_PROFILE: "b12f6031-5b23-4c52-8fbb-5185c60e83b9"
         PROVISIONING_PROFILE_SPECIFIER: "ArticrenWaveGitHubFlow"
+        SWIFT_OBJC_BRIDGING_HEADER: "ArticrenWave/Support/AWExceptionCatcher.h"
         SWIFT_VERSION: "5.9"
         CODE_SIGN_ENTITLEMENTS: ArticrenWave/ArticrenWave.entitlements
         ENABLE_USER_SCRIPT_SANDBOXING: NO

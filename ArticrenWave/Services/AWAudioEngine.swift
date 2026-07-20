@@ -65,10 +65,26 @@ class AWAudioPlayer {
         return voices[vIdx]
     }
 
-    /// play() throws NSException if the engine died between checks — always gate it
-    private func startVoice(_ v: AVAudioPlayerNode) {
-        guard engine.isRunning, v.engine != nil, !v.isPlaying else { return }
-        v.play()
+    /// play() throws an ObjC NSException if the engine is internally paused even
+    /// when isRunning reads true — catch it via the ObjC shim, never crash.
+    @discardableResult
+    private func startVoice(_ v: AVAudioPlayerNode) -> Bool {
+        guard engine.isRunning, v.engine != nil else { return false }
+        if v.isPlaying { return true }
+        if let reason = AWTryCatch({ v.play() }) {
+            print("startVoice blocked: \(reason)")
+            isSetup = false          // engine is lying — rebuild on next request
+            return false
+        }
+        return true
+    }
+
+    /// scheduleBuffer can also throw on a dead graph — same protection
+    private func safeSchedule(_ v: AVAudioPlayerNode, _ buf: AVAudioPCMBuffer, at when: AVAudioTime? = nil) {
+        if let reason = AWTryCatch({ v.scheduleBuffer(buf, at: when, options: [], completionHandler: nil) }) {
+            print("schedule blocked: \(reason)")
+            isSetup = false
+        }
     }
     private var reverbNode = AVAudioUnitReverb()
     private var isSetup    = false
@@ -84,9 +100,38 @@ class AWAudioPlayer {
 
     private let cacheLock = NSLock()
 
-    // MARK: - Setup (main thread only) — resilient, retries until engine runs
+    private var observersInstalled = false
+
+    /// The engine's isRunning can report true while internally paused after a
+    /// route/session reconfiguration (iOS 26+). These observers mark it dirty
+    /// so the next sound request rebuilds the graph from scratch.
+    private func installObservers() {
+        guard !observersInstalled else { return }
+        observersInstalled = true
+        NotificationCenter.default.addObserver(
+            forName: .AVAudioEngineConfigurationChange, object: nil, queue: .main
+        ) { [weak self] _ in self?.isSetup = false }
+        NotificationCenter.default.addObserver(
+            forName: AVAudioSession.interruptionNotification, object: nil, queue: .main
+        ) { [weak self] _ in self?.isSetup = false }
+        NotificationCenter.default.addObserver(
+            forName: AVAudioSession.mediaServicesWereResetNotification, object: nil, queue: .main
+        ) { [weak self] _ in self?.isSetup = false }
+    }
+
+    // MARK: - Setup (main thread only) — rebuilds the whole graph when dirty
     func setup() {
-        if isSetup { ensureRunning(); return }
+        if isSetup && engine.isRunning { return }
+        installObservers()
+
+        // Tear down any previous graph completely — reattaching to a half-dead
+        // engine is what makes play() throw even when isRunning reads true.
+        engine.stop()
+        engine = AVAudioEngine()
+        reverbNode = AVAudioUnitReverb()
+        voices = []
+        vIdx = 0
+
         do {
             try AVAudioSession.sharedInstance().setCategory(.playback, mode: .default, options: [.mixWithOthers])
             try AVAudioSession.sharedInstance().setActive(true)
@@ -120,10 +165,7 @@ class AWAudioPlayer {
     // MARK: - Synthesize PCM buffer (background)
     /// Restart engine/session if iOS suspended them (app init, interruptions, route changes)
     private func ensureRunning() {
-        if !engine.isRunning {
-            try? AVAudioSession.sharedInstance().setActive(true)
-            try? engine.start()
-        }
+        if !engine.isRunning { isSetup = false }   // dirty → setup() rebuilds the graph
         // Voices start lazily per-schedule via startVoice — no bulk play
     }
 
@@ -224,9 +266,8 @@ class AWAudioPlayer {
         cacheLock.unlock()
         if let cached = cachedBuf {
             let v = nextVoice()
-            startVoice(v)
-            guard v.isPlaying else { return }
-            v.scheduleBuffer(cached)          // fresh voice → plays NOW, mixes with others
+            guard startVoice(v) else { return }
+            safeSchedule(v, cached)           // fresh voice → plays NOW, mixes with others
             return
         }
         // Cold path: synth in background then play
@@ -236,9 +277,8 @@ class AWAudioPlayer {
             DispatchQueue.main.async {
                 guard let buf, self.engine.isRunning else { return }
                 let v = self.nextVoice()
-                self.startVoice(v)
-                guard v.isPlaying else { return }
-                v.scheduleBuffer(buf)
+                guard self.startVoice(v) else { return }
+                self.safeSchedule(v, buf)
             }
         }
     }
@@ -286,12 +326,11 @@ class AWAudioPlayer {
                 let anchor = mach_absolute_time()
                 for item in items {
                     let v = self.nextVoice()
-                    self.startVoice(v)
-                    guard v.isPlaying else { continue }
+                    guard self.startVoice(v) else { continue }
                     let noteTime = AVAudioTime(
                         hostTime: anchor + AVAudioTime.hostTime(forSeconds: item.delay + 0.12)
                     )
-                    v.scheduleBuffer(item.buf, at: noteTime)
+                    self.safeSchedule(v, item.buf, at: noteTime)
                 }
             }
         }
@@ -308,13 +347,13 @@ class AWAudioPlayer {
     func pause() {
         playTimer?.invalidate(); playTimer = nil
         isPaused = true; isPlaying = false
-        for v in voices { v.stop() }
+        for v in voices { _ = AWTryCatch({ v.stop() }) }
     }
     func stop()  {
         playTimer?.invalidate(); playTimer = nil
         isPlaying = false; isPaused = false; currentBeat = 0
         // Flush every voice's scheduled queue, then re-arm for instant key presses
-        for v in voices { v.stop() }
+        for v in voices { _ = AWTryCatch({ v.stop() }) }
     }
     func seek(to p: Double) { currentBeat = p * totalBeats }
 
