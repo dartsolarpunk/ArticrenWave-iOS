@@ -2,6 +2,7 @@
 // All AVAudio calls on MainActor / main thread only
 // Sound design based on additive synthesis per instrument type
 import AVFoundation
+import UIKit
 import Observation
 
 struct AWInstrument {
@@ -101,9 +102,14 @@ class AWAudioPlayer {
             engine.attach(v)
             engine.connect(v, to: reverbNode, format: nil)
         }
+        // Only start audio when the app is truly active — starting during launch/transition
+        // makes the engine report running then die, and the next play() aborts the process.
+        guard UIApplication.shared.applicationState == .active else { return }
         do { try engine.start() } catch { print("Engine: \(error)"); return }
-        for v in voices { startVoice(v) }
-        isSetup = true   // only after successful start
+        guard engine.isRunning else { return }
+        // NOTE: voices are NOT pre-played here. Each voice starts individually,
+        // guarded, at the moment it's needed (startVoice) — never in bulk.
+        isSetup = true   // only after verified start
         // Pre-warm full piano range for instant key response
         synthQ.async { [weak self] in
             guard let self else { return }
@@ -118,9 +124,7 @@ class AWAudioPlayer {
             try? AVAudioSession.sharedInstance().setActive(true)
             try? engine.start()
         }
-        if engine.isRunning {
-            for v in voices { startVoice(v) }
-        }
+        // Voices start lazily per-schedule via startVoice — no bulk play
     }
 
     func buildBuf(midi: Int, dur: Double, prog: UInt8) -> AVAudioPCMBuffer? {
@@ -278,15 +282,16 @@ class AWAudioPlayer {
             DispatchQueue.main.async { [weak self] in
                 guard let self, self.isPlaying else { return }
                 guard self.engine.isRunning else { self.stop(); return }
-                for v in self.voices { self.startVoice(v) }
-
                 // Host-time anchor is shared by ALL voices → overlapping notes mix correctly
                 let anchor = mach_absolute_time()
                 for item in items {
+                    let v = self.nextVoice()
+                    self.startVoice(v)
+                    guard v.isPlaying else { continue }
                     let noteTime = AVAudioTime(
                         hostTime: anchor + AVAudioTime.hostTime(forSeconds: item.delay + 0.12)
                     )
-                    self.nextVoice().scheduleBuffer(item.buf, at: noteTime)
+                    v.scheduleBuffer(item.buf, at: noteTime)
                 }
             }
         }
@@ -304,14 +309,12 @@ class AWAudioPlayer {
         playTimer?.invalidate(); playTimer = nil
         isPaused = true; isPlaying = false
         for v in voices { v.stop() }
-        for v in voices { startVoice(v) }
     }
     func stop()  {
         playTimer?.invalidate(); playTimer = nil
         isPlaying = false; isPaused = false; currentBeat = 0
         // Flush every voice's scheduled queue, then re-arm for instant key presses
         for v in voices { v.stop() }
-        for v in voices { startVoice(v) }
     }
     func seek(to p: Double) { currentBeat = p * totalBeats }
 
