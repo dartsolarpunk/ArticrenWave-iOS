@@ -54,7 +54,15 @@ class AWAudioPlayer {
 
     // Audio nodes — only touched on main thread
     private var engine     = AVAudioEngine()
-    private var playerNode = AVAudioPlayerNode()
+    private var playerNode = AVAudioPlayerNode()   // legacy alias (voice 0)
+    private var voices: [AVAudioPlayerNode] = []   // polyphonic pool — no queue-behind latency
+    private var vIdx = 0
+
+    private func nextVoice() -> AVAudioPlayerNode {
+        guard !voices.isEmpty else { return playerNode }
+        vIdx = (vIdx + 1) % voices.count
+        return voices[vIdx]
+    }
     private var reverbNode = AVAudioUnitReverb()
     private var isSetup    = false
     private var _bpm       = 80
@@ -78,12 +86,17 @@ class AWAudioPlayer {
         } catch { print("Session: \(error)") }
         reverbNode.loadFactoryPreset(.mediumHall)
         reverbNode.wetDryMix = 12
-        engine.attach(playerNode)
         engine.attach(reverbNode)
-        engine.connect(playerNode, to: reverbNode, format: nil)
         engine.connect(reverbNode, to: engine.mainMixerNode, format: nil)
+        // 8-voice polyphonic pool: each key press gets its own node → instant, overlapping notes
+        voices = (0..<8).map { _ in AVAudioPlayerNode() }
+        playerNode = voices[0]
+        for v in voices {
+            engine.attach(v)
+            engine.connect(v, to: reverbNode, format: nil)
+        }
         do { try engine.start() } catch { print("Engine: \(error)"); return }
-        if !playerNode.isPlaying { playerNode.play() }
+        for v in voices where !v.isPlaying { v.play() }
         isSetup = true   // only after successful start
         // Pre-warm full piano range for instant key response
         synthQ.async { [weak self] in
@@ -99,7 +112,9 @@ class AWAudioPlayer {
             try? AVAudioSession.sharedInstance().setActive(true)
             try? engine.start()
         }
-        if engine.isRunning && !playerNode.isPlaying { playerNode.play() }
+        if engine.isRunning {
+            for v in voices where !v.isPlaying { v.play() }
+        }
     }
 
     func buildBuf(midi: Int, dur: Double, prog: UInt8) -> AVAudioPCMBuffer? {
@@ -198,8 +213,9 @@ class AWAudioPlayer {
         let cachedBuf = bufCache[key]
         cacheLock.unlock()
         if let cached = cachedBuf {
-            if !playerNode.isPlaying { playerNode.play() }
-            playerNode.scheduleBuffer(cached)
+            let v = nextVoice()
+            if !v.isPlaying { v.play() }
+            v.scheduleBuffer(cached)          // fresh voice → plays NOW, mixes with others
             return
         }
         // Cold path: synth in background then play
@@ -208,8 +224,9 @@ class AWAudioPlayer {
             let buf = self.buildBuf(midi: midi, dur: duration, prog: prog)
             DispatchQueue.main.async {
                 guard let buf, self.engine.isRunning else { return }
-                if !self.playerNode.isPlaying { self.playerNode.play() }
-                self.playerNode.scheduleBuffer(buf)
+                let v = self.nextVoice()
+                if !v.isPlaying { v.play() }
+                v.scheduleBuffer(buf)
             }
         }
     }
@@ -253,25 +270,15 @@ class AWAudioPlayer {
             DispatchQueue.main.async { [weak self] in
                 guard let self, self.isPlaying else { return }
                 guard self.engine.isRunning else { self.stop(); return }
-                if !self.playerNode.isPlaying { self.playerNode.play() }
+                for v in self.voices where !v.isPlaying { v.play() }
 
-                // Use AVAudioPlayerNode timing to schedule at precise offsets
-                let startTime = self.playerNode.lastRenderTime.map {
-                    AVAudioTime(hostTime: $0.hostTime + AVAudioTime.hostTime(forSeconds: 0.05))
-                }
-
+                // Host-time anchor is shared by ALL voices → overlapping notes mix correctly
+                let anchor = mach_absolute_time()
                 for item in items {
-                    let delayFrames = AVAudioFramePosition(item.delay * self.sr)
-                    if let start = startTime {
-                        let noteTime = AVAudioTime(
-                            sampleTime: start.sampleTime + delayFrames,
-                            atRate: self.sr
-                        )
-                        self.playerNode.scheduleBuffer(item.buf, at: noteTime)
-                    } else {
-                        // Fallback: schedule sequentially
-                        self.playerNode.scheduleBuffer(item.buf)
-                    }
+                    let noteTime = AVAudioTime(
+                        hostTime: anchor + AVAudioTime.hostTime(forSeconds: item.delay + 0.12)
+                    )
+                    self.nextVoice().scheduleBuffer(item.buf, at: noteTime)
                 }
             }
         }
@@ -285,8 +292,19 @@ class AWAudioPlayer {
         }
     }
 
-    func pause() { playTimer?.invalidate(); playTimer=nil; isPaused=true; isPlaying=false }
-    func stop()  { playTimer?.invalidate(); playTimer=nil; isPlaying=false; isPaused=false; currentBeat=0 }
+    func pause() {
+        playTimer?.invalidate(); playTimer = nil
+        isPaused = true; isPlaying = false
+        for v in voices { v.stop() }
+        if engine.isRunning { for v in voices { v.play() } }
+    }
+    func stop()  {
+        playTimer?.invalidate(); playTimer = nil
+        isPlaying = false; isPaused = false; currentBeat = 0
+        // Flush every voice's scheduled queue, then re-arm for instant key presses
+        for v in voices { v.stop() }
+        if engine.isRunning { for v in voices { v.play() } }
+    }
     func seek(to p: Double) { currentBeat = p * totalBeats }
 
     // MARK: - Extract notes (main thread safe)

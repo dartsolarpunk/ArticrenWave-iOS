@@ -15,10 +15,12 @@ struct ScoreEditorView: View {
             GeometryReader { geo in
                 ScrollView([.horizontal, .vertical], showsIndicators: true) {
                     ScorePageView()
-                        .scaleEffect(zoomScale)
-                        .frame(
-                            width:  max(geo.size.width,  800 * zoomScale),
-                            height: max(geo.size.height, 1100 * zoomScale)
+                        .frame(width: geo.size.width, alignment: .topLeading)   // logical layout size
+                        .scaleEffect(zoomScale, anchor: .topLeading)            // draw scaled from origin
+                        .frame(                                                  // scrollable canvas grows w/ zoom
+                            width:  geo.size.width  * zoomScale,
+                            height: max(geo.size.height, 1200) * zoomScale,
+                            alignment: .topLeading
                         )
                 }
                 .background(Color(hex: "#080910"))
