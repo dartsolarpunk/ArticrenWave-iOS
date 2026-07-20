@@ -14,8 +14,7 @@ struct ArticrenWaveApp: App {
         if let hex = UserDefaults.standard.string(forKey: "aw_accent_hex") {
             AppState.shared.theme.accent = Color(hex: hex)
         }
-        // Pre-warm audio engine
-        AWAudioPlayer.shared.setup()
+        // Audio engine starts lazily on first sound request (starting at App.init crashes on iOS 27 — session not active yet)
     }
 
     var body: some Scene {

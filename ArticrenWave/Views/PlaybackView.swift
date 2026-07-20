@@ -113,7 +113,10 @@ struct PlaybackBarView: View {
                 .overlay(Rectangle().fill(appState.theme.accent.opacity(0.04)))
         )
         .overlay(Rectangle().fill(Color.white.opacity(0.06)).frame(height: 1), alignment: .top)
-        .onAppear { audio.setup() }
+        .onAppear {
+            // Delay so the app is fully active — starting audio during launch crashes on iOS 27
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.6) { audio.setup() }
+        }
     }
 }
 

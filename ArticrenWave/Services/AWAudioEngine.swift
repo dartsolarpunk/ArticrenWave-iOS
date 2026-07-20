@@ -63,6 +63,12 @@ class AWAudioPlayer {
         vIdx = (vIdx + 1) % voices.count
         return voices[vIdx]
     }
+
+    /// play() throws NSException if the engine died between checks — always gate it
+    private func startVoice(_ v: AVAudioPlayerNode) {
+        guard engine.isRunning, v.engine != nil, !v.isPlaying else { return }
+        v.play()
+    }
     private var reverbNode = AVAudioUnitReverb()
     private var isSetup    = false
     private var _bpm       = 80
@@ -96,7 +102,7 @@ class AWAudioPlayer {
             engine.connect(v, to: reverbNode, format: nil)
         }
         do { try engine.start() } catch { print("Engine: \(error)"); return }
-        for v in voices where !v.isPlaying { v.play() }
+        for v in voices { startVoice(v) }
         isSetup = true   // only after successful start
         // Pre-warm full piano range for instant key response
         synthQ.async { [weak self] in
@@ -113,7 +119,7 @@ class AWAudioPlayer {
             try? engine.start()
         }
         if engine.isRunning {
-            for v in voices where !v.isPlaying { v.play() }
+            for v in voices { startVoice(v) }
         }
     }
 
@@ -214,7 +220,8 @@ class AWAudioPlayer {
         cacheLock.unlock()
         if let cached = cachedBuf {
             let v = nextVoice()
-            if !v.isPlaying { v.play() }
+            startVoice(v)
+            guard v.isPlaying else { return }
             v.scheduleBuffer(cached)          // fresh voice → plays NOW, mixes with others
             return
         }
@@ -225,7 +232,8 @@ class AWAudioPlayer {
             DispatchQueue.main.async {
                 guard let buf, self.engine.isRunning else { return }
                 let v = self.nextVoice()
-                if !v.isPlaying { v.play() }
+                self.startVoice(v)
+                guard v.isPlaying else { return }
                 v.scheduleBuffer(buf)
             }
         }
@@ -270,7 +278,7 @@ class AWAudioPlayer {
             DispatchQueue.main.async { [weak self] in
                 guard let self, self.isPlaying else { return }
                 guard self.engine.isRunning else { self.stop(); return }
-                for v in self.voices where !v.isPlaying { v.play() }
+                for v in self.voices { self.startVoice(v) }
 
                 // Host-time anchor is shared by ALL voices → overlapping notes mix correctly
                 let anchor = mach_absolute_time()
@@ -296,14 +304,14 @@ class AWAudioPlayer {
         playTimer?.invalidate(); playTimer = nil
         isPaused = true; isPlaying = false
         for v in voices { v.stop() }
-        if engine.isRunning { for v in voices { v.play() } }
+        for v in voices { startVoice(v) }
     }
     func stop()  {
         playTimer?.invalidate(); playTimer = nil
         isPlaying = false; isPaused = false; currentBeat = 0
         // Flush every voice's scheduled queue, then re-arm for instant key presses
         for v in voices { v.stop() }
-        if engine.isRunning { for v in voices { v.play() } }
+        for v in voices { startVoice(v) }
     }
     func seek(to p: Double) { currentBeat = p * totalBeats }
 
