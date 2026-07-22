@@ -524,6 +524,8 @@ struct AWDrawerProfileTab: View {
 // MARK: - Settings Tab
 struct AWDrawerSettingsTab: View {
     @Environment(AppState.self) private var appState
+    @AppStorage("aw_debug_console_enabled") private var debugConsoleEnabled = false
+    @State private var showDebugConsole = false
 
     var accentOptions: [(String, String)] = [
         ("Magenta", "#E040FB"), ("Cyan", "#00E5FF"), ("Green", "#00E676"),
@@ -558,10 +560,81 @@ struct AWDrawerSettingsTab: View {
             } header: {
                 Text("ACCENT COLOR").font(.system(size: 9, design: .monospaced)).foregroundColor(.white.opacity(0.3)).kerning(1.5)
             }
+
+            Section {
+                Toggle(isOn: $debugConsoleEnabled) {
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text("Debug Console").foregroundColor(.white)
+                        Text("Shows an overlay button with engine/audio logs")
+                            .font(.system(size: 11)).foregroundColor(.white.opacity(0.4))
+                    }
+                }
+                .tint(appState.theme.accent)
+
+                if debugConsoleEnabled {
+                    Button {
+                        showDebugConsole = true
+                    } label: {
+                        Label("View Debug Log", systemImage: "terminal")
+                            .foregroundColor(appState.theme.accent)
+                    }
+                }
+            } header: {
+                Text("DEVELOPER").font(.system(size: 9, design: .monospaced)).foregroundColor(.white.opacity(0.3)).kerning(1.5)
+            }
+            .listRowBackground(Color.white.opacity(0.04))
         }
         .listStyle(.plain)
         .scrollContentBackground(.hidden)
         .background(Color(hex: "#0A0B14"))
+        .sheet(isPresented: $showDebugConsole) {
+            AWDebugConsoleView()
+        }
+    }
+}
+
+// MARK: - Debug Console (view AWAudioPlayer.shared.debugLog)
+struct AWDebugConsoleView: View {
+    @Environment(\.dismiss) private var dismiss
+    @State private var refreshTick = 0
+    let timer = Timer.publish(every: 1, on: .main, in: .common).autoconnect()
+
+    var body: some View {
+        NavigationStack {
+            ScrollViewReader { proxy in
+                ScrollView {
+                    LazyVStack(alignment: .leading, spacing: 4) {
+                        ForEach(Array(AWAudioPlayer.shared.debugLog.enumerated()), id: \.offset) { idx, line in
+                            Text(line)
+                                .font(.system(size: 11, design: .monospaced))
+                                .foregroundColor(line.contains("EXCEPTION") ? .red : .white.opacity(0.75))
+                                .id(idx)
+                        }
+                    }
+                    .padding(12)
+                }
+                .background(Color.black)
+                .onReceive(timer) { _ in
+                    refreshTick += 1
+                    if let last = AWAudioPlayer.shared.debugLog.indices.last {
+                        withAnimation { proxy.scrollTo(last, anchor: .bottom) }
+                    }
+                }
+            }
+            .navigationTitle("Debug Console")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbarBackground(Color.black, for: .navigationBar)
+            .toolbarColorScheme(.dark, for: .navigationBar)
+            .toolbar {
+                ToolbarItem(placement: .navigationBarLeading) {
+                    Button("Clear") { AWAudioPlayer.shared.debugLog.removeAll() }
+                        .foregroundColor(.white.opacity(0.6))
+                }
+                ToolbarItem(placement: .navigationBarTrailing) {
+                    Button("Done") { dismiss() }
+                }
+            }
+        }
     }
 }
 

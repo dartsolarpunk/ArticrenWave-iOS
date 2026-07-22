@@ -14,24 +14,12 @@ struct MainComposerView: View {
     @State private var showMainMenu       = false
     @State private var zoom: CGFloat      = 1.0
 
+    @AppStorage("aw_debug_console_enabled") private var debugConsoleEnabled = false
+    @State private var showDebugConsole = false
+
     var body: some View {
         ZStack {
             Color(hex: "#080910").ignoresSafeArea()
-
-            // TEMP DIAGNOSTIC — shows exactly what the audio engine is doing right now.
-            // Remove once sound is confirmed working.
-            VStack {
-                Text(AWAudioPlayer.shared.diagnostic)
-                    .font(.system(size: 10, design: .monospaced))
-                    .foregroundColor(.yellow)
-                    .padding(6)
-                    .background(Color.black.opacity(0.75))
-                    .cornerRadius(6)
-                    .padding(.top, 54)
-                Spacer()
-            }
-            .zIndex(999)
-            .allowsHitTesting(false)
 
             VStack(spacing: 0) {
                 // ── Top toolbar ───────────────────────────────────
@@ -112,6 +100,22 @@ struct MainComposerView: View {
         }
         // Menu is handled by AWMainLayout drawer — just sync state
         .onChange(of: showMainMenu) { _, val in appState.isMainMenuOpen = val }
+        // Small floating debug console button — only when explicitly enabled in Settings
+        .overlay(alignment: .bottomTrailing) {
+            if debugConsoleEnabled {
+                Button { showDebugConsole = true } label: {
+                    Image(systemName: "terminal")
+                        .font(.system(size: 14, weight: .medium))
+                        .foregroundColor(.white.opacity(0.8))
+                        .frame(width: 38, height: 38)
+                        .background(Color.black.opacity(0.6))
+                        .clipShape(Circle())
+                }
+                .padding(.trailing, 12)
+                .padding(.bottom, 100)
+            }
+        }
+        .sheet(isPresented: $showDebugConsole) { AWDebugConsoleView() }
     }
 
     var pianoHeight: CGFloat {
