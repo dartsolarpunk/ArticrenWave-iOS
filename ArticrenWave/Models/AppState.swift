@@ -219,6 +219,9 @@ class ScoreEngine {
         validationError = nil
         selectedChordID = chord.id
         selectedNoteID  = note.id
+        // Preview the placed note immediately so they can hear pitch/octave as they build the score
+        let instrName = document.parts[partIndex].instrument.rawValue
+        AWAudioPlayer.shared.playPitch(pitch, instrumentName: instrName, duration: min(0.6, dur.beats * 0.5))
         if measure.isFull {
             let isLast = measureIndex == document.parts[partIndex].measures.count - 1
             if isLast {
@@ -264,6 +267,8 @@ class ScoreEngine {
         document.parts[partIndex].measures[measureIndex] = measure
         validationError = nil
         selectedChordID = ch.id
+        let instrName = document.parts[partIndex].instrument.rawValue
+        AWAudioPlayer.shared.playPitch(pitch, instrumentName: instrName, duration: min(0.6, dur.beats * 0.5))
     }
 
     // Delete one note from a chord (removes chord when empty)

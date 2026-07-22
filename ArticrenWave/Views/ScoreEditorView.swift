@@ -769,6 +769,8 @@ struct DraggableMeasureView: View {
                     c2.notes[ni].pitch = newPitch
                     c2.notes.sort { $0.pitch.staffPosition < $1.pitch.staffPosition }
                     scoreEngine.document.parts[partIndex].measures[mi].contents[ci] = .chord(c2)
+                    let instrName = scoreEngine.document.parts[partIndex].instrument.rawValue
+                    AWAudioPlayer.shared.playPitch(newPitch, instrumentName: instrName, duration: 0.4)
                     return
                 }
             }
@@ -794,6 +796,10 @@ struct DraggableMeasureView: View {
                     }
                     scoreEngine.document.parts[partIndex].measures[mi].contents[ci] = .chord(c)
                     scoreEngine.selectedChordID = chord.id
+                    let instrName = scoreEngine.document.parts[partIndex].instrument.rawValue
+                    for note in c.notes {
+                        AWAudioPlayer.shared.playPitch(note.pitch, instrumentName: instrName, duration: 0.4)
+                    }
                     return
                 }
             }
