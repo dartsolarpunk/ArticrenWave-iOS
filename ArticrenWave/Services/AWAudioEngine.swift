@@ -102,15 +102,27 @@ class AWAudioPlayer {
 
     private var observersInstalled = false
 
+    private var lastSetupFinishedAt: CFAbsoluteTime = 0
+
     /// The engine's isRunning can report true while internally paused after a
     /// route/session reconfiguration (iOS 26+). These observers mark it dirty
     /// so the next sound request rebuilds the graph from scratch.
+    ///
+    /// AVAudioEngineConfigurationChange also fires as a normal side effect of our
+    /// OWN attach/connect/start calls inside setup() — not just external events.
+    /// Ignore it for a brief settle window right after we finish building the graph,
+    /// or every setup() call immediately invalidates itself before a note can play.
     private func installObservers() {
         guard !observersInstalled else { return }
         observersInstalled = true
         NotificationCenter.default.addObserver(
             forName: .AVAudioEngineConfigurationChange, object: nil, queue: .main
-        ) { [weak self] _ in self?.isSetup = false }
+        ) { [weak self] _ in
+            guard let self else { return }
+            if CFAbsoluteTimeGetCurrent() - self.lastSetupFinishedAt > 0.4 {
+                self.isSetup = false
+            }
+        }
         NotificationCenter.default.addObserver(
             forName: AVAudioSession.interruptionNotification, object: nil, queue: .main
         ) { [weak self] _ in self?.isSetup = false }
@@ -149,12 +161,17 @@ class AWAudioPlayer {
         }
         // Only start audio when the app is truly active — starting during launch/transition
         // makes the engine report running then die, and the next play() aborts the process.
-        guard UIApplication.shared.applicationState == .active else { return }
+        // If we're not active yet, retry shortly rather than silently giving up forever.
+        guard UIApplication.shared.applicationState == .active else {
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) { [weak self] in self?.setup() }
+            return
+        }
         do { try engine.start() } catch { print("Engine: \(error)"); return }
         guard engine.isRunning else { return }
         // NOTE: voices are NOT pre-played here. Each voice starts individually,
         // guarded, at the moment it's needed (startVoice) — never in bulk.
         isSetup = true   // only after verified start
+        lastSetupFinishedAt = CFAbsoluteTimeGetCurrent()
         // Pre-warm full piano range for instant key response
         synthQ.async { [weak self] in
             guard let self else { return }
