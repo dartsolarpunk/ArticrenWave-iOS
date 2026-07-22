@@ -18,6 +18,21 @@ struct MainComposerView: View {
         ZStack {
             Color(hex: "#080910").ignoresSafeArea()
 
+            // TEMP DIAGNOSTIC — shows exactly what the audio engine is doing right now.
+            // Remove once sound is confirmed working.
+            VStack {
+                Text(AWAudioPlayer.shared.diagnostic)
+                    .font(.system(size: 10, design: .monospaced))
+                    .foregroundColor(.yellow)
+                    .padding(6)
+                    .background(Color.black.opacity(0.75))
+                    .cornerRadius(6)
+                    .padding(.top, 54)
+                Spacer()
+            }
+            .zIndex(999)
+            .allowsHitTesting(false)
+
             VStack(spacing: 0) {
                 // ── Top toolbar ───────────────────────────────────
                 ComposerTopBar(

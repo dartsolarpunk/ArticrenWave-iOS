@@ -46,6 +46,7 @@ class AWAudioPlayer {
     var isPaused:    Bool   = false
     var currentBeat: Double = 0.0
     var totalBeats:  Double = 16.0
+    var diagnostic:  String = "idle"   // visible on-screen trace of what the engine is doing
 
     var progress: Double { totalBeats > 0 ? currentBeat / totalBeats : 0 }
     var currentTimeString: String {
@@ -133,7 +134,7 @@ class AWAudioPlayer {
 
     // MARK: - Setup (main thread only) — rebuilds the whole graph when dirty
     func setup() {
-        if isSetup && engine.isRunning { return }
+        if isSetup && engine.isRunning { diagnostic = "already running"; return }
         installObservers()
 
         // Tear down any previous graph completely — reattaching to a half-dead
@@ -163,15 +164,20 @@ class AWAudioPlayer {
         // makes the engine report running then die, and the next play() aborts the process.
         // If we're not active yet, retry shortly rather than silently giving up forever.
         guard UIApplication.shared.applicationState == .active else {
+            diagnostic = "waiting for app active"
             DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) { [weak self] in self?.setup() }
             return
         }
-        do { try engine.start() } catch { print("Engine: \(error)"); return }
-        guard engine.isRunning else { return }
+        do { try engine.start() } catch {
+            diagnostic = "engine.start() threw: \(error.localizedDescription)"
+            return
+        }
+        guard engine.isRunning else { diagnostic = "engine.start() returned but isRunning=false"; return }
         // NOTE: voices are NOT pre-played here. Each voice starts individually,
         // guarded, at the moment it's needed (startVoice) — never in bulk.
         isSetup = true   // only after verified start
         lastSetupFinishedAt = CFAbsoluteTimeGetCurrent()
+        diagnostic = "engine running, \(voices.count) voices"
         // Pre-warm full piano range for instant key response
         synthQ.async { [weak self] in
             guard let self else { return }
@@ -275,7 +281,7 @@ class AWAudioPlayer {
         let prog = AWInstrument.find(instrumentName).midiProgram
         let key  = (midi << 8) | Int(prog)
         ensureRunning()
-        guard engine.isRunning else { return }
+        guard engine.isRunning else { diagnostic = "playPitch: engine not running"; return }
 
         // INSTANT path: cached buffer schedules with zero latency
         cacheLock.lock()
@@ -283,19 +289,25 @@ class AWAudioPlayer {
         cacheLock.unlock()
         if let cached = cachedBuf {
             let v = nextVoice()
-            guard startVoice(v) else { return }
+            guard startVoice(v) else { diagnostic = "playPitch: startVoice failed (cached)"; return }
             safeSchedule(v, cached)           // fresh voice → plays NOW, mixes with others
+            diagnostic = "playPitch: scheduled midi=\(midi) (cached), vol=\(engine.mainMixerNode.outputVolume)"
             return
         }
         // Cold path: synth in background then play
+        diagnostic = "playPitch: synthesizing midi=\(midi)…"
         synthQ.async { [weak self] in
             guard let self else { return }
             let buf = self.buildBuf(midi: midi, dur: duration, prog: prog)
             DispatchQueue.main.async {
-                guard let buf, self.engine.isRunning else { return }
+                guard let buf, self.engine.isRunning else {
+                    self.diagnostic = "playPitch: buf or engine nil after synth"
+                    return
+                }
                 let v = self.nextVoice()
-                guard self.startVoice(v) else { return }
+                guard self.startVoice(v) else { self.diagnostic = "playPitch: startVoice failed (cold)"; return }
                 self.safeSchedule(v, buf)
+                self.diagnostic = "playPitch: scheduled midi=\(midi) (cold), vol=\(self.engine.mainMixerNode.outputVolume)"
             }
         }
     }
