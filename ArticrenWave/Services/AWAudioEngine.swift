@@ -51,7 +51,7 @@ class AWAudioPlayer {
     func log(_ msg: String) {
         let stamp = String(format: "%.2f", CFAbsoluteTimeGetCurrent().truncatingRemainder(dividingBy: 1000))
         debugLog.append("[\(stamp)] \(msg)")
-        if debugLog.count > 200 { debugLog.removeFirst(debugLog.count - 200) }
+        if debugLog.count > 20_000 { debugLog.removeFirst(debugLog.count - 20_000) }
         AWDebugLog.shared.log(msg, category: "AUDIO")
     }
 
@@ -114,7 +114,7 @@ class AWAudioPlayer {
     private var isSetup    = false
     private var _bpm       = 80
     private var playTimer: Timer?
-    private let sr: Double = 44100
+    private var sr: Double = 44100   // updated to the real hardware rate once the engine starts
 
     // Buffer cache: key = (midi << 8 | program)
     private var bufCache: [Int: AVAudioPCMBuffer] = [:]
@@ -167,28 +167,35 @@ class AWAudioPlayer {
         reverbNode = AVAudioUnitReverb()
         voices = []
         vIdx = 0
+        cacheLock.lock(); bufCache.removeAll(); cacheLock.unlock()
 
         do {
             try AVAudioSession.sharedInstance().setCategory(.playback, mode: .default, options: [.mixWithOthers])
             try AVAudioSession.sharedInstance().setActive(true)
-        } catch { print("Session: \(error)") }
+        } catch { log("session error: \(error.localizedDescription)") }
         reverbNode.loadFactoryPreset(.mediumHall)
         reverbNode.wetDryMix = 12
         engine.attach(reverbNode)
         // 8-voice polyphonic pool: each key press gets its own node → instant, overlapping notes
         voices = (0..<8).map { _ in AVAudioPlayerNode() }
         playerNode = voices[0]
-        // CRITICAL ORDER: connect every voice → reverb FIRST, with an explicit stereo format,
-        // so the whole chain has a concrete format before reverb → mixer is ever made.
-        // Connecting reverb → mixer first (with format: nil, and reverb still input-less)
-        // leaves the graph in a state where AVAudioPlayerNode.play() throws
-        // "player started when in a disconnected state" on every voice, silently, forever.
-        let stereoFormat = AVAudioFormat(standardFormatWithSampleRate: sr, channels: 2)
+        // CRITICAL: use the engine's OWN native hardware format for every connection,
+        // not a hardcoded 44.1kHz assumption. Many devices run their audio session
+        // natively at 48kHz -- forcing a mismatched explicit format onto connect()
+        // can silently produce a connection that Swift reports as successful but
+        // never establishes a real signal path, which is exactly what produced
+        // "player started when in a disconnected state" on every single voice,
+        // every single time, regardless of retries (confirmed in the debug log:
+        // v.engine === engine passed, ruling out a stale-reference explanation --
+        // this was a genuine format-negotiation failure at connect() time).
+        let hwFormat = engine.mainMixerNode.outputFormat(forBus: 0)
+        if hwFormat.sampleRate > 0 { sr = hwFormat.sampleRate }
+        log("using hardware format: \(hwFormat.sampleRate)Hz, \(hwFormat.channelCount)ch")
         for v in voices {
             engine.attach(v)
-            engine.connect(v, to: reverbNode, format: stereoFormat)
+            engine.connect(v, to: reverbNode, format: hwFormat)
         }
-        engine.connect(reverbNode, to: engine.mainMixerNode, format: stereoFormat)
+        engine.connect(reverbNode, to: engine.mainMixerNode, format: hwFormat)
         // Only start audio when the app is truly active — starting during launch/transition
         // makes the engine report running then die, and the next play() aborts the process.
         // If we're not active yet, retry shortly rather than silently giving up forever.

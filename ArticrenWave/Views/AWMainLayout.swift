@@ -608,6 +608,8 @@ struct AWDrawerSettingsTab: View {
 struct AWDebugConsoleView: View {
     @Environment(\.dismiss) private var dismiss
     @State private var refreshTick = 0
+    @State private var exportURL: URL? = nil
+    @State private var showShareSheet = false
     let timer = Timer.publish(every: 1, on: .main, in: .common).autoconnect()
 
     func color(for line: String) -> Color {
@@ -649,9 +651,24 @@ struct AWDebugConsoleView: View {
                         .foregroundColor(.white.opacity(0.6))
                 }
                 ToolbarItem(placement: .navigationBarTrailing) {
-                    Button("Done") { dismiss() }
+                    HStack(spacing: 16) {
+                        // Exports the FULL log, no matter how large, to a .txt file
+                        // for sharing/reuse in other projects or with support.
+                        Button {
+                            if let url = AWDebugLog.shared.exportToFile() {
+                                exportURL = url
+                                showShareSheet = true
+                            }
+                        } label: {
+                            Image(systemName: "square.and.arrow.up")
+                        }
+                        Button("Done") { dismiss() }
+                    }
                 }
             }
+        }
+        .sheet(isPresented: $showShareSheet) {
+            if let exportURL { ShareSheet(activityItems: [exportURL]) }
         }
     }
 }
