@@ -525,6 +525,7 @@ struct AWDrawerProfileTab: View {
 struct AWDrawerSettingsTab: View {
     @Environment(AppState.self) private var appState
     @AppStorage("aw_debug_console_enabled") private var debugConsoleEnabled = false
+    @AppStorage("aw_accent_hex") private var savedAccentHex: String = "#E040FB"
     @State private var showDebugConsole = false
 
     var accentOptions: [(String, String)] = [
@@ -540,15 +541,14 @@ struct AWDrawerSettingsTab: View {
                     ForEach(accentOptions, id: \.0) { name, hex in
                         Button {
                             appState.theme.accent = Color(hex: hex)
-                            UserDefaults.standard.set(hex, forKey: "aw_accent_hex")
+                            savedAccentHex = hex   // @AppStorage — real, observed SwiftUI state
                         } label: {
                             VStack(spacing: 5) {
-                                let savedHex = UserDefaults.standard.string(forKey: "aw_accent_hex") ?? "#E040FB"
                                 Circle()
                                     .fill(Color(hex: hex))
                                     .frame(width: 32, height: 32)
                                     .overlay(Circle().stroke(.white, lineWidth: 2.5)
-                                        .opacity(savedHex == hex ? 1 : 0))
+                                        .opacity(savedAccentHex == hex ? 1 : 0))
                                 Text(name)
                                     .font(.system(size: 8))
                                     .foregroundColor(.white.opacity(0.4))

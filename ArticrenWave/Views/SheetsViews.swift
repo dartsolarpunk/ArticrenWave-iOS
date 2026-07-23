@@ -13,7 +13,7 @@ struct ExportSheet: View {
     @State private var exportURL: URL? = nil
     @State private var showShareSheet = false
 
-    let formats = ["WAV", "MP3", "M4A", "MIDI"]
+    let formats = ["WAV", "M4A (compressed)", "MIDI"]
 
     var body: some View {
         NavigationStack {
@@ -163,10 +163,29 @@ struct ExportSheet: View {
                 self.statusMessage = "Export failed"
                 return
             }
-            self.exportURL = wavURL
-            self.showShareSheet = true
-            self.isExporting = false
-            self.statusMessage = format == "WAV" ? "WAV exported" : format + " exported"
+            if format == "WAV" {
+                self.exportURL = wavURL
+                self.showShareSheet = true
+                self.isExporting = false
+                self.statusMessage = "WAV exported"
+            } else {
+                // Compressed AAC/M4A -- SoundCloud and most platforms accept this
+                // directly; iOS has no public MP3 encoder, so this is the real,
+                // widely-compatible substitute rather than a silent no-op.
+                AWAudioPlayer.shared.exportM4A(wavURL: wavURL) { m4aURL in
+                    guard let m4aURL else {
+                        self.isExporting = false
+                        self.statusMessage = "Compression failed — WAV still available"
+                        self.exportURL = wavURL
+                        self.showShareSheet = true
+                        return
+                    }
+                    self.exportURL = m4aURL
+                    self.showShareSheet = true
+                    self.isExporting = false
+                    self.statusMessage = "M4A exported"
+                }
+            }
         }
     }
 
