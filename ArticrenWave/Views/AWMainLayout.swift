@@ -7,10 +7,24 @@ struct AWMainLayout: View {
     @Environment(AuthManager.self) private var authManager
     @Environment(ScoreEngine.self) private var scoreEngine
 
-    @State private var showDrawer = false
     @State private var drawerTab: AWDrawerTab = .files
 
     var drawerWidth: CGFloat { min(UIScreen.main.bounds.width * 0.82, 320) }
+
+    /// Single source of truth for open/closed state -- a direct computed binding
+    /// onto appState.isMainMenuOpen. Previously this was mirrored across THREE
+    /// separate @State variables (this view's showDrawer, MainComposerView's
+    /// showMainMenu, and direct writes from MainMenuOverlay) kept in sync via
+    /// onChange callbacks in both directions. Any close path that didn't reset
+    /// every mirror left the others stale, so re-opening (which only re-set one
+    /// of them) produced no visible change since SwiftUI's onChange doesn't fire
+    /// when a value is set to what it already equals.
+    var showDrawer: Binding<Bool> {
+        Binding(
+            get: { appState.isMainMenuOpen },
+            set: { appState.isMainMenuOpen = $0 }
+        )
+    }
 
     var body: some View {
         GeometryReader { geo in
@@ -20,39 +34,33 @@ struct AWMainLayout: View {
                 // ── Main content (shifts right when drawer open) ──
                 MainComposerView()
                     .frame(width: geo.size.width, height: geo.size.height)
-                    .offset(x: showDrawer ? drawerWidth : 0)
-                    .animation(.spring(response: 0.35, dampingFraction: 0.85), value: showDrawer)
-                    .disabled(showDrawer)
+                    .offset(x: showDrawer.wrappedValue ? drawerWidth : 0)
+                    .animation(.spring(response: 0.35, dampingFraction: 0.85), value: showDrawer.wrappedValue)
+                    .disabled(showDrawer.wrappedValue)
 
                 // ── Dim overlay ───────────────────────────────────
-                if showDrawer {
+                if showDrawer.wrappedValue {
                     Color.black.opacity(0.52)
                         .ignoresSafeArea()
                         .offset(x: drawerWidth)
-                        .onTapGesture { withAnimation { showDrawer = false } }
+                        .onTapGesture { withAnimation { appState.isMainMenuOpen = false } }
                         .transition(.opacity)
                         .zIndex(5)
                 }
 
                 // ── Side drawer ───────────────────────────────────
                 AWDrawer(
-                    isOpen: $showDrawer,
+                    isOpen: showDrawer,
                     activeTab: $drawerTab
                 )
                 .frame(width: drawerWidth)
-                .offset(x: showDrawer ? 0 : -drawerWidth)
-                .animation(.spring(response: 0.35, dampingFraction: 0.85), value: showDrawer)
+                .offset(x: showDrawer.wrappedValue ? 0 : -drawerWidth)
+                .animation(.spring(response: 0.35, dampingFraction: 0.85), value: showDrawer.wrappedValue)
                 .zIndex(10)
                 .ignoresSafeArea()
             }
         }
         .ignoresSafeArea(.keyboard)
-        .onChange(of: appState.isMainMenuOpen) { _, open in
-            withAnimation { showDrawer = open }
-        }
-        .onChange(of: showDrawer) { _, open in
-            appState.isMainMenuOpen = open
-        }
     }
 }
 
@@ -646,7 +654,7 @@ struct AWDrawerAboutTab: View {
         List {
             Section {
                 LabeledContent("App", value: "Articren Wave").foregroundColor(.white)
-                LabeledContent("Version", value: "1.0").foregroundColor(.white)
+                LabeledContent("Version", value: "\(Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "1.0") (build \(Bundle.main.infoDictionary?["CFBundleVersion"] as? String ?? "?"))").foregroundColor(.white)
                 LabeledContent("Author", value: "Justin Craig Venable").foregroundColor(.white)
                 LabeledContent("Company", value: "DART Meadow LLC").foregroundColor(.white)
                 LabeledContent("Engine", value: "LEATR Neural Architecture").foregroundColor(.white)

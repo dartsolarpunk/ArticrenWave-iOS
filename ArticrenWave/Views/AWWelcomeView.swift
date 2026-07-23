@@ -57,6 +57,12 @@ struct AWWelcomeView: View {
                     Text("DART Meadow · Radical Deepscale")
                         .font(.system(size: 9, design: .monospaced))
                         .foregroundColor(.white.opacity(0.28))
+                    // Build number, always visible on the very first screen so
+                    // there's never ambiguity about what's actually installed
+                    Text("build \(Bundle.main.infoDictionary?["CFBundleVersion"] as? String ?? "?")")
+                        .font(.system(size: 11, weight: .bold, design: .monospaced))
+                        .foregroundColor(appState.theme.accent)
+                        .padding(.top, 4)
                 }
 
                 Spacer()

@@ -11,7 +11,6 @@ struct MainComposerView: View {
     @State private var showExportSheet    = false
     @State private var showLayoutPicker   = false
     @State private var showTempoSheet     = false
-    @State private var showMainMenu       = false
     @State private var zoom: CGFloat      = 1.0
 
     @AppStorage("aw_debug_console_enabled") private var debugConsoleEnabled = false
@@ -27,8 +26,7 @@ struct MainComposerView: View {
                     showProjectBrowser: $showProjectBrowser,
                     showExportSheet:    $showExportSheet,
                     showLayoutPicker:   $showLayoutPicker,
-                    showTempoSheet:     $showTempoSheet,
-                    showMainMenu:       $showMainMenu
+                    showTempoSheet:     $showTempoSheet
                 )
 
                 // ── Note palette ──────────────────────────────────
@@ -98,8 +96,7 @@ struct MainComposerView: View {
                 .environment(AppState.shared)
                 .environment(ScoreEngine.shared)
         }
-        // Menu is handled by AWMainLayout drawer — just sync state
-        .onChange(of: showMainMenu) { _, val in appState.isMainMenuOpen = val }
+        // Menu open/close is driven entirely by AWMainLayout observing appState.isMainMenuOpen
         // Small floating debug console button — only when explicitly enabled in Settings
         .overlay(alignment: .bottomTrailing) {
             if debugConsoleEnabled {
@@ -132,12 +129,12 @@ struct ComposerTopBar: View {
     @Binding var showExportSheet:    Bool
     @Binding var showLayoutPicker:   Bool
     @Binding var showTempoSheet:     Bool
-    @Binding var showMainMenu:       Bool
 
     var body: some View {
         HStack(spacing: 0) {
-            // Menu
-            Button { withAnimation { showMainMenu = true } } label: {
+            // Menu — writes directly to the single shared source of truth so it
+            // can be reopened any number of times, regardless of how it was closed
+            Button { withAnimation { appState.isMainMenuOpen = true } } label: {
                 Image(systemName: "sidebar.left")
                     .font(.system(size: 17, weight: .medium))
                     .foregroundColor(.white.opacity(0.8))
