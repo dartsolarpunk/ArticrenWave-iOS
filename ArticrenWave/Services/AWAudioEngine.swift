@@ -179,23 +179,22 @@ class AWAudioPlayer {
         // 8-voice polyphonic pool: each key press gets its own node → instant, overlapping notes
         voices = (0..<8).map { _ in AVAudioPlayerNode() }
         playerNode = voices[0]
-        // CRITICAL: use the engine's OWN native hardware format for every connection,
-        // not a hardcoded 44.1kHz assumption. Many devices run their audio session
-        // natively at 48kHz -- forcing a mismatched explicit format onto connect()
-        // can silently produce a connection that Swift reports as successful but
-        // never establishes a real signal path, which is exactly what produced
-        // "player started when in a disconnected state" on every single voice,
-        // every single time, regardless of retries (confirmed in the debug log:
-        // v.engine === engine passed, ruling out a stale-reference explanation --
-        // this was a genuine format-negotiation failure at connect() time).
-        let hwFormat = engine.mainMixerNode.outputFormat(forBus: 0)
-        if hwFormat.sampleRate > 0 { sr = hwFormat.sampleRate }
-        log("using hardware format: \(hwFormat.sampleRate)Hz, \(hwFormat.channelCount)ch")
+        // CRITICAL FIX: connect with format: nil, NOT an explicitly queried format.
+        // The previous attempt read engine.mainMixerNode.outputFormat(forBus: 0)
+        // BEFORE engine.start() -- at that point AVAudioEngine has not yet
+        // negotiated anything with the real hardware and outputFormat(forBus:)
+        // returns an internal placeholder (44.1kHz stereo), which is why the log
+        // kept showing exactly "44100.0Hz, 2ch" even on a device whose real
+        // session runs at 48kHz. That placeholder was then forced onto every
+        // connection, producing the same silent format mismatch as before under
+        // a different disguise. Passing format: nil is the Apple-documented
+        // pattern here: it lets the engine infer the connection format from
+        // what's already wired, which is what actually avoids the mismatch.
         for v in voices {
             engine.attach(v)
-            engine.connect(v, to: reverbNode, format: hwFormat)
+            engine.connect(v, to: reverbNode, format: nil)
         }
-        engine.connect(reverbNode, to: engine.mainMixerNode, format: hwFormat)
+        engine.connect(reverbNode, to: engine.mainMixerNode, format: nil)
         // Only start audio when the app is truly active — starting during launch/transition
         // makes the engine report running then die, and the next play() aborts the process.
         // If we're not active yet, retry shortly rather than silently giving up forever.
@@ -209,6 +208,12 @@ class AWAudioPlayer {
             return
         }
         guard engine.isRunning else { log("engine.start() returned but isRunning=false"); return }
+        // NOW it's safe to read the real negotiated hardware rate -- only after
+        // a successful engine.start() does AVAudioSession.sampleRate reflect
+        // what the hardware actually negotiated, rather than a placeholder.
+        let realRate = AVAudioSession.sharedInstance().sampleRate
+        if realRate > 0 { sr = realRate }
+        log("engine started -- real hardware rate: \(realRate)Hz")
         // NOTE: voices are NOT pre-played here. Each voice starts individually,
         // guarded, at the moment it's needed (startVoice) — never in bulk.
         isSetup = true   // only after verified start

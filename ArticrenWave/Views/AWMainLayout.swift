@@ -610,6 +610,7 @@ struct AWDebugConsoleView: View {
     @State private var refreshTick = 0
     @State private var exportURL: URL? = nil
     @State private var showShareSheet = false
+    @State private var isNearBottom = true   // only auto-scroll if the user hasn't scrolled away
     let timer = Timer.publish(every: 1, on: .main, in: .common).autoconnect()
 
     func color(for line: String) -> Color {
@@ -630,15 +631,24 @@ struct AWDebugConsoleView: View {
                                 .foregroundColor(color(for: line))
                                 .id(idx)
                         }
+                        // Invisible sentinel at the very bottom — its visibility tells us
+                        // whether the user is currently near the bottom of the log or has
+                        // scrolled up to read something earlier.
+                        Color.clear.frame(height: 1)
+                            .id("BOTTOM_SENTINEL")
+                            .onAppear { isNearBottom = true }
+                            .onDisappear { isNearBottom = false }
                     }
                     .padding(12)
                 }
                 .background(Color.black)
                 .onReceive(timer) { _ in
                     refreshTick += 1
-                    if let last = AWDebugLog.shared.entries.indices.last {
-                        withAnimation { proxy.scrollTo(last, anchor: .bottom) }
-                    }
+                    // Only auto-follow new log lines if the user was already at the
+                    // bottom -- otherwise respect that they scrolled up to read
+                    // something, instead of yanking them back down every second.
+                    guard isNearBottom, let last = AWDebugLog.shared.entries.indices.last else { return }
+                    withAnimation { proxy.scrollTo(last, anchor: .bottom) }
                 }
             }
             .navigationTitle("Debug Console")
@@ -655,8 +665,15 @@ struct AWDebugConsoleView: View {
                         // Exports the FULL log, no matter how large, to a .txt file
                         // for sharing/reuse in other projects or with support.
                         Button {
-                            if let url = AWDebugLog.shared.exportToFile() {
-                                exportURL = url
+                            guard let url = AWDebugLog.shared.exportToFile() else { return }
+                            exportURL = url
+                            // Present the sheet on the NEXT run loop tick, not the same
+                            // one -- setting exportURL and showShareSheet=true together
+                            // synchronously raced SwiftUI's sheet presentation, so the
+                            // very first tap showed a blank sheet before the URL state
+                            // had actually propagated (a second tap worked because the
+                            // state was already settled from the first attempt).
+                            DispatchQueue.main.async {
                                 showShareSheet = true
                             }
                         } label: {

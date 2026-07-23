@@ -131,6 +131,16 @@ struct AWWelcomeView: View {
 
                             if code == 1001 {
                                 authManager.authError = nil   // user cancellation — not worth surfacing
+                            } else if code == 1000 {
+                                // An instant (sub-0.1s), empty-userInfo 1000 with NO Apple ID
+                                // sheet ever appearing is the specific signature of the
+                                // Sign in with Apple capability not actually being enabled
+                                // for this App ID on Apple's Developer Portal server-side —
+                                // the local entitlements file alone is not sufficient; the
+                                // capability must also be turned on for this exact App ID at
+                                // developer.apple.com > Certificates, IDs & Profiles > Identifiers,
+                                // and the provisioning profile regenerated/re-downloaded after.
+                                authManager.authError = "Sign in with Apple isn't enabled for this app yet. In the Apple Developer Portal, open this App ID's capabilities and turn on \"Sign in with Apple,\" then regenerate the provisioning profile. (Error 1000, instant failure, empty detail — see Debug Console.)"
                             } else {
                                 authManager.authError = "Sign in unavailable (code \(code)). Please try Continue as Guest, or check Debug Console for details."
                             }
