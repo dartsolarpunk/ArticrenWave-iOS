@@ -81,18 +81,37 @@ class AWAudioPlayer {
     /// unbreakable fail-rebuild-fail loop) resolves this without ever losing a
     /// graph that was otherwise healthy.
     @discardableResult
-    private func startVoice(_ v: AVAudioPlayerNode, retriesLeft: Int = 3) -> Bool {
+    private func startVoice(_ v: AVAudioPlayerNode, retriesLeft: Int = 6) -> Bool {
         guard engine.isRunning, v.engine === engine else {
             log("startVoice: engine.isRunning=\(engine.isRunning) v.engine===engine=\(v.engine === engine)")
             return false
         }
         if v.isPlaying { return true }
+
+        // The render thread needs a brief moment to actually come up after
+        // engine.start() returns -- that call can report success and
+        // engine.isRunning can read true while the render graph is still
+        // spinning up internally. Calling .play() on a freshly attached node
+        // in the same synchronous call stack as engine.start() (which is
+        // exactly what playPitch -> setup() -> startVoice does) is what
+        // produced "player started when in a disconnected state" on every
+        // single voice, regardless of sample rate or format (both directly
+        // ruled out: the hardware rate is now correctly detected as 48kHz and
+        // the exception persists identically). Waiting out the settle window
+        // before the first attempt, rather than only retrying after failing,
+        // avoids the failure in the first place instead of reacting to it.
+        let sinceSetup = CFAbsoluteTimeGetCurrent() - lastSetupFinishedAt
+        let settleWindow = 0.15
+        if sinceSetup < settleWindow {
+            Thread.sleep(forTimeInterval: settleWindow - sinceSetup)
+        }
+
         if let reason = AWTryCatch({ v.play() }) {
             log("startVoice EXCEPTION: \(reason) (retriesLeft=\(retriesLeft))")
             if retriesLeft > 0 {
                 // Do NOT invalidate isSetup here -- the engine itself is fine;
                 // this is a transient race on the node, not a dead graph.
-                Thread.sleep(forTimeInterval: 0.01)
+                Thread.sleep(forTimeInterval: 0.03)
                 return startVoice(v, retriesLeft: retriesLeft - 1)
             }
             // Only after repeated failures on an otherwise-healthy engine do we
@@ -219,6 +238,17 @@ class AWAudioPlayer {
         isSetup = true   // only after verified start
         lastSetupFinishedAt = CFAbsoluteTimeGetCurrent()
         log("engine running, \(voices.count) voices")
+
+        // Warm up every voice node once, right now, while nothing depends on
+        // the timing -- if a node's very first .play() carries its own
+        // settle/activation cost (distinct from the engine-wide startup cost),
+        // this absorbs it here instead of on the first real note the user
+        // actually wants to hear.
+        for v in voices {
+            _ = AWTryCatch({ v.play() })
+            _ = AWTryCatch({ v.stop() })
+        }
+        log("voice warm-up pass complete")
         // Pre-warm full piano range for instant key response
         synthQ.async { [weak self] in
             guard let self else { return }
