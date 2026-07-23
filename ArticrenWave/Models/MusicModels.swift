@@ -315,8 +315,8 @@ struct ScoreDocument: Identifiable, Codable {
     static func defaultDocument() -> ScoreDocument {
         var doc = ScoreDocument()
         doc.parts = [
-            Part(instrument: .piano, clef: .treble, measures: [Measure()]),
-            Part(instrument: .piano, clef: .bass, measures: [Measure()])
+            Part(instrument: .piano, clef: .treble, measures: (0..<4).map { _ in Measure() }),
+            Part(instrument: .piano, clef: .bass,   measures: (0..<4).map { _ in Measure() })
         ]
         return doc
     }

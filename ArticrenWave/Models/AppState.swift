@@ -163,6 +163,7 @@ class ScoreEngine {
     var editMode: ScoreEditMode   = .select
     var selectedChordID: UUID?    = nil
     var selectedNoteID: UUID? = nil
+    var selectedRestID: UUID? = nil
 
     // MARK: - Undo / Redo
     private var undoStack: [ScoreDocument] = []
@@ -172,7 +173,6 @@ class ScoreEngine {
 
     func snapshot() {
         undoStack.append(document)
-        if undoStack.count > 50 { undoStack.removeFirst() }
         redoStack.removeAll()
     }
     func undo() {

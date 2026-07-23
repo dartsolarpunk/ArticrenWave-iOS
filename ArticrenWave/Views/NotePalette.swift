@@ -78,10 +78,10 @@ struct NotePalette: View {
 
                 paletteDivider
 
-                // ── TIE / SLUR ──────────────────────────────────
+                // ── CARRY / SLUR ─────────────────────────────────
                 PaletteKey(
                     label: { TieCurveSymbol(color: isTie ? appState.theme.accent : .white, size: 18, isSlur: false) },
-                    sublabel: "Tie",
+                    sublabel: "Carry",
                     isActive: isTie,
                     accent: appState.theme.accent
                 ) { scoreEngine.editMode = .addTie }
@@ -130,6 +130,11 @@ struct NotePalette: View {
                         }
                         scoreEngine.selectedChordID = nil
                         scoreEngine.selectedNoteID  = nil
+                    } else if let rid = scoreEngine.selectedRestID {
+                        for pi in scoreEngine.document.parts.indices {
+                            scoreEngine.deleteContent(id: rid, partIndex: pi)
+                        }
+                        scoreEngine.selectedRestID = nil
                     } else {
                         scoreEngine.editMode = .delete
                     }

@@ -15,11 +15,11 @@ struct ScoreEditorView: View {
             GeometryReader { geo in
                 ScrollView([.horizontal, .vertical], showsIndicators: true) {
                     ScorePageView()
-                        .frame(width: geo.size.width, alignment: .topLeading)   // logical layout size
-                        .scaleEffect(zoomScale, anchor: .topLeading)            // draw scaled from origin
-                        .frame(                                                  // scrollable canvas grows w/ zoom
-                            width:  geo.size.width  * zoomScale,
-                            height: max(geo.size.height, 1200) * zoomScale,
+                        .fixedSize(horizontal: false, vertical: true)   // width follows content, not the screen
+                        .scaleEffect(zoomScale, anchor: .topLeading)     // draw scaled from origin
+                        .frame(
+                            minWidth: geo.size.width,
+                            minHeight: max(geo.size.height, 1200) * zoomScale,
                             alignment: .topLeading
                         )
                 }
@@ -121,18 +121,23 @@ struct ScorePageView: View {
                     .foregroundColor(.white.opacity(0.25))
                     .padding(40)
             } else {
-                ForEach(Array(scoreEngine.document.parts.enumerated()), id: \.element.id) { pi, part in
-                    ZStack {
-                        DraggableStaffRow(partIndex: pi, part: part)
-                        // Playback cursor overlay
-                        if audio.isPlaying || audio.isPaused {
-                            PlaybackCursorOverlay(
-                                progress: audio.progress,
-                                measureCount: part.measures.count
-                            )
+                // All staves pan together horizontally as one synchronized unit
+                ScrollView(.horizontal, showsIndicators: true) {
+                    VStack(alignment: .leading, spacing: 0) {
+                        ForEach(Array(scoreEngine.document.parts.enumerated()), id: \.element.id) { pi, part in
+                            ZStack {
+                                DraggableStaffRow(partIndex: pi, part: part)
+                                // Playback cursor overlay
+                                if audio.isPlaying || audio.isPaused {
+                                    PlaybackCursorOverlay(
+                                        progress: audio.progress,
+                                        measureCount: part.measures.count
+                                    )
+                                }
+                            }
+                            .padding(.bottom, 60)
                         }
                     }
-                    .padding(.bottom, 60)
                 }
             }
 
@@ -198,33 +203,31 @@ struct DraggableStaffRow: View {
                 .font(.system(size: 10, weight: .medium, design: .monospaced))
                 .foregroundColor(.white.opacity(0.4))
 
-            ScrollView(.horizontal, showsIndicators: false) {
-                ZStack(alignment: .topLeading) {
-                    HStack(spacing: 0) {
-                        SafeClefView(clef: part.clef, lineSpacing: lineSpacing)
-                            .frame(width: 48, height: rowH)
+            ZStack(alignment: .topLeading) {
+                HStack(spacing: 0) {
+                    SafeClefView(clef: part.clef, lineSpacing: lineSpacing)
+                        .frame(width: 48, height: rowH)
 
-                        ForEach(Array(part.measures.enumerated()), id: \.element.id) { mi, measure in
-                            DraggableMeasureView(
-                                measure:      measure,
-                                partIndex:    partIndex,
-                                measureIndex: mi,
-                                clef:         part.clef,
-                                lineSpacing:  lineSpacing,
-                                width:        widthFor(measure),
-                                rowH:         rowH
-                            )
-                        }
+                    ForEach(Array(part.measures.enumerated()), id: \.element.id) { mi, measure in
+                        DraggableMeasureView(
+                            measure:      measure,
+                            partIndex:    partIndex,
+                            measureIndex: mi,
+                            clef:         part.clef,
+                            lineSpacing:  lineSpacing,
+                            width:        widthFor(measure),
+                            rowH:         rowH
+                        )
                     }
-
-                    // Tie/slur Bezier overlay — spans measures within this part
-                    TieOverlayView(
-                        part: part, partIndex: partIndex,
-                        lineSpacing: lineSpacing, slotUnitW: slotUnitW,
-                        rowH: rowH, clefW: 48
-                    )
-                    .allowsHitTesting(true)
                 }
+
+                // Tie/slur Bezier overlay — spans measures within this part
+                TieOverlayView(
+                    part: part, partIndex: partIndex,
+                    lineSpacing: lineSpacing, slotUnitW: slotUnitW,
+                    rowH: rowH, clefW: 48
+                )
+                .allowsHitTesting(true)
             }
         }
     }
@@ -561,13 +564,25 @@ struct DraggableMeasureView: View {
 
                 case .rest(let rest):
                     SafeRestView(
-                        symbol: restSymbol(rest.duration),
+                        duration: rest.duration,
                         xPos: xForContent(rest.id),
-                        yPos: rowH / 2
+                        yPos: rowH / 2,
+                        lineSpacing: lineSpacing,
+                        isSelected: scoreEngine.selectedRestID == rest.id,
+                        accent: appState.theme.accent
                     )
+                    .contentShape(Rectangle().size(CGSize(width: 40, height: 60))
+                        .offset(x: xForContent(rest.id) - 20, y: rowH/2 - 30))
                     .onTapGesture {
-                        if case .delete = scoreEngine.editMode {
+                        switch scoreEngine.editMode {
+                        case .delete:
                             scoreEngine.deleteContent(id: rest.id, partIndex: partIndex)
+                            if scoreEngine.selectedRestID == rest.id { scoreEngine.selectedRestID = nil }
+                        case .select, .move:
+                            scoreEngine.selectedRestID   = rest.id
+                            scoreEngine.selectedChordID   = nil
+                            scoreEngine.selectedNoteID    = nil
+                        default: break
                         }
                     }
                 }
@@ -836,10 +851,6 @@ struct DraggableMeasureView: View {
         lassoSelected = selected
     }
 
-    func restSymbol(_ d: RestDuration) -> String {
-        switch d { case .whole: return "𝄻"; case .half: return "𝄼";
-                   case .quarter: return "𝄽"; case .eighth: return "𝄾"; case .sixteenth: return "𝄿" }
-    }
     func accidentalText(_ a: Accidental) -> String {
         switch a { case .sharp: return "♯"; case .flat: return "♭"; case .natural: return "♮"; case .none: return "" }
     }
@@ -921,12 +932,20 @@ struct StemView: View {
 
 // MARK: - Safe Rest View
 struct SafeRestView: View {
-    let symbol: String
-    let xPos:   CGFloat
-    let yPos:   CGFloat
+    let duration:   RestDuration
+    let xPos:       CGFloat
+    let yPos:       CGFloat
+    let lineSpacing: CGFloat
+    var isSelected: Bool = false
+    var accent:     Color = .white
     var body: some View {
-        Text(symbol).font(.system(size: 18)).foregroundColor(.white.opacity(0.75))
-            .position(x: xPos, y: yPos)
+        NoteSymbolView(
+            duration: RestDurationHelper.noteFor(duration),
+            color: isSelected ? accent : .white.opacity(0.85),
+            size: lineSpacing * 2.1,
+            isRest: true
+        )
+        .position(x: xPos, y: yPos)
     }
 }
 
