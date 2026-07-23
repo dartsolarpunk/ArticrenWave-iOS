@@ -72,18 +72,31 @@ class AWAudioPlayer {
         return voices[vIdx]
     }
 
-    /// play() throws an ObjC NSException if the engine is internally paused even
-    /// when isRunning reads true — catch it via the ObjC shim, never crash.
+    /// play() throws an ObjC NSException if a fresh AVAudioPlayerNode races the
+    /// engine's render-graph setup on some devices, even though engine.isRunning
+    /// reads true and the node is genuinely attached. Retrying the SAME node
+    /// after a brief delay (rather than tearing down and rebuilding the whole
+    /// engine, which was happening on every single note and produced an
+    /// unbreakable fail-rebuild-fail loop) resolves this without ever losing a
+    /// graph that was otherwise healthy.
     @discardableResult
-    private func startVoice(_ v: AVAudioPlayerNode) -> Bool {
-        guard engine.isRunning, v.engine != nil else {
-            log("startVoice: engine.isRunning=\(engine.isRunning) v.engine=\(v.engine != nil)")
+    private func startVoice(_ v: AVAudioPlayerNode, retriesLeft: Int = 3) -> Bool {
+        guard engine.isRunning, v.engine === engine else {
+            log("startVoice: engine.isRunning=\(engine.isRunning) v.engine===engine=\(v.engine === engine)")
             return false
         }
         if v.isPlaying { return true }
         if let reason = AWTryCatch({ v.play() }) {
-            log("startVoice EXCEPTION: \(reason)")
-            isSetup = false          // engine is lying — rebuild on next request
+            log("startVoice EXCEPTION: \(reason) (retriesLeft=\(retriesLeft))")
+            if retriesLeft > 0 {
+                // Do NOT invalidate isSetup here -- the engine itself is fine;
+                // this is a transient race on the node, not a dead graph.
+                Thread.sleep(forTimeInterval: 0.01)
+                return startVoice(v, retriesLeft: retriesLeft - 1)
+            }
+            // Only after repeated failures on an otherwise-healthy engine do we
+            // consider the graph itself suspect and allow the next setup() to rebuild.
+            isSetup = false
             return false
         }
         return true

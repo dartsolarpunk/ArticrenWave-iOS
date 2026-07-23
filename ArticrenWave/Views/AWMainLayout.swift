@@ -561,7 +561,10 @@ struct AWDrawerSettingsTab: View {
                                     .font(.system(size: 8))
                                     .foregroundColor(.white.opacity(0.4))
                             }
+                            .contentShape(Rectangle())   // whole swatch area is tappable, not just the glyphs
                         }
+                        .buttonStyle(.plain)   // List/Section rows otherwise intercept nested Button taps,
+                                               // which is why only the very first swatch tapped ever "stuck"
                     }
                 }
                 .listRowBackground(Color.white.opacity(0.04))
