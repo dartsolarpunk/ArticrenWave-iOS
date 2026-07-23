@@ -1,6 +1,6 @@
-// AWAudioEngine.swift — AVAudioEngine with synthesized instruments
-// All AVAudio calls on MainActor / main thread only
-// Sound design based on additive synthesis per instrument type
+// AWAudioEngine.swift — AVAudioEngine driving AVAudioUnitSampler(s) loaded with
+// iOS's built-in orchestral sound bank (real sampled instruments, not synthesized
+// oscillators). All AVAudio calls on main thread.
 import AVFoundation
 import UIKit
 import Observation
@@ -35,7 +35,7 @@ private struct ScheduledNote {
     let startTime: Double
     let duration:  Double
     let program:   UInt8
-    let isTied:    Bool
+    let channel:   UInt8
 }
 
 @Observable
@@ -46,6 +46,7 @@ class AWAudioPlayer {
     var isPaused:    Bool   = false
     var currentBeat: Double = 0.0
     var totalBeats:  Double = 16.0
+
     // Rolling debug log — off-screen by default, viewable via Settings > Debug Console
     var debugLog: [String] = []
     func log(_ msg: String) {
@@ -60,68 +61,31 @@ class AWAudioPlayer {
         return String(format: "%d:%04.1f", Int(s)/60, s.truncatingRemainder(dividingBy: 60))
     }
 
-    // Audio nodes — only touched on main thread
-    private var engine     = AVAudioEngine()
-    private var playerNode = AVAudioPlayerNode()   // legacy alias (voice 0)
-    private var voices: [AVAudioPlayerNode] = []   // polyphonic pool — no queue-behind latency
-    private var vIdx = 0
-
-    private func nextVoice() -> AVAudioPlayerNode {
-        guard !voices.isEmpty else { return playerNode }
-        vIdx = (vIdx + 1) % voices.count
-        return voices[vIdx]
-    }
-
-    /// play() throws an ObjC NSException if the engine is internally paused even
-    /// when isRunning reads true — catch it via the ObjC shim, never crash.
-    @discardableResult
-    private func startVoice(_ v: AVAudioPlayerNode) -> Bool {
-        guard engine.isRunning, v.engine != nil else {
-            log("startVoice: engine.isRunning=\(engine.isRunning) v.engine=\(v.engine != nil)")
-            return false
-        }
-        if v.isPlaying { return true }
-        if let reason = AWTryCatch({ v.play() }) {
-            log("startVoice EXCEPTION: \(reason)")
-            isSetup = false          // engine is lying — rebuild on next request
-            return false
-        }
-        return true
-    }
-
-    /// scheduleBuffer can also throw on a dead graph — same protection
-    private func safeSchedule(_ v: AVAudioPlayerNode, _ buf: AVAudioPCMBuffer, at when: AVAudioTime? = nil) {
-        if let reason = AWTryCatch({ v.scheduleBuffer(buf, at: when, options: [], completionHandler: nil) }) {
-            log("scheduleBuffer EXCEPTION: \(reason)")
-            isSetup = false
-        }
-    }
-    private var reverbNode = AVAudioUnitReverb()
+    // MARK: - Audio graph
+    // A pool of samplers, one per MIDI channel (0-15), each independently able to
+    // hold a different instrument's program. This gives us real orchestral samples
+    // (piano, strings, brass, winds, etc. from iOS's built-in sound bank) with
+    // simultaneous multi-instrument, polyphonic playback.
+    private var engine    = AVAudioEngine()
+    private var reverb    = AVAudioUnitReverb()
+    private var samplers: [AVAudioUnitSampler] = []
+    private let channelCount = 16
+    private var loadedProgram: [UInt8: UInt8] = [:]   // channel -> currently loaded program
     private var isSetup    = false
     private var _bpm       = 80
     private var playTimer: Timer?
-    private let sr: Double = 44100
+    private var soundBankURL: URL?
 
-    // Buffer cache: key = (midi << 8 | program)
-    private var bufCache: [Int: AVAudioPCMBuffer] = [:]
-    private let synthQ = DispatchQueue(label: "aw.synth", qos: .userInitiated)
+    private var observersInstalled = false
+    private var lastSetupFinishedAt: CFAbsoluteTime = 0
 
     private init() {}
 
-    private let cacheLock = NSLock()
+    /// Restart engine/session if iOS suspended them (app init, interruptions, route changes)
+    private func ensureRunning() {
+        if !engine.isRunning { isSetup = false }
+    }
 
-    private var observersInstalled = false
-
-    private var lastSetupFinishedAt: CFAbsoluteTime = 0
-
-    /// The engine's isRunning can report true while internally paused after a
-    /// route/session reconfiguration (iOS 26+). These observers mark it dirty
-    /// so the next sound request rebuilds the graph from scratch.
-    ///
-    /// AVAudioEngineConfigurationChange also fires as a normal side effect of our
-    /// OWN attach/connect/start calls inside setup() — not just external events.
-    /// Ignore it for a brief settle window right after we finish building the graph,
-    /// or every setup() call immediately invalidates itself before a note can play.
     private func installObservers() {
         guard !observersInstalled else { return }
         observersInstalled = true
@@ -141,43 +105,50 @@ class AWAudioPlayer {
         ) { [weak self] _ in self?.isSetup = false }
     }
 
-    // MARK: - Setup (main thread only) — rebuilds the whole graph when dirty
+    /// Locate iOS's built-in orchestral sound bank. This ships on-device -- no
+    /// bundled soundfont needed -- and provides real sampled instruments across
+    /// the full General MIDI program set (piano, strings, brass, woodwinds,
+    /// percussion, etc.), which is what actually sounds like an orchestra
+    /// instead of raw oscillator waveforms.
+    private func locateSoundBank() -> URL? {
+        let candidates = [
+            "/System/Library/Components/CoreAudio.component/Contents/Resources/gs_instruments.dls",
+            "/System/Library/Audio/Sounds/Banks/gs_instruments.dls",
+        ]
+        for path in candidates where FileManager.default.fileExists(atPath: path) {
+            return URL(fileURLWithPath: path)
+        }
+        return nil
+    }
+
+    // MARK: - Setup (main thread only) -- rebuilds the whole graph when dirty
     func setup() {
         if isSetup && engine.isRunning { log("already running"); return }
         installObservers()
 
-        // Tear down any previous graph completely — reattaching to a half-dead
-        // engine is what makes play() throw even when isRunning reads true.
         engine.stop()
         engine = AVAudioEngine()
-        reverbNode = AVAudioUnitReverb()
-        voices = []
-        vIdx = 0
+        reverb = AVAudioUnitReverb()
+        samplers = (0..<channelCount).map { _ in AVAudioUnitSampler() }
+        loadedProgram = [:]
 
         do {
             try AVAudioSession.sharedInstance().setCategory(.playback, mode: .default, options: [.mixWithOthers])
             try AVAudioSession.sharedInstance().setActive(true)
-        } catch { print("Session: \(error)") }
-        reverbNode.loadFactoryPreset(.mediumHall)
-        reverbNode.wetDryMix = 12
-        engine.attach(reverbNode)
-        // 8-voice polyphonic pool: each key press gets its own node → instant, overlapping notes
-        voices = (0..<8).map { _ in AVAudioPlayerNode() }
-        playerNode = voices[0]
-        // CRITICAL ORDER: connect every voice → reverb FIRST, with an explicit stereo format,
-        // so the whole chain has a concrete format before reverb → mixer is ever made.
-        // Connecting reverb → mixer first (with format: nil, and reverb still input-less)
-        // leaves the graph in a state where AVAudioPlayerNode.play() throws
-        // "player started when in a disconnected state" on every voice, silently, forever.
-        let stereoFormat = AVAudioFormat(standardFormatWithSampleRate: sr, channels: 2)
-        for v in voices {
-            engine.attach(v)
-            engine.connect(v, to: reverbNode, format: stereoFormat)
+        } catch { log("session error: \(error.localizedDescription)") }
+
+        reverb.loadFactoryPreset(.mediumHall)
+        reverb.wetDryMix = 14
+        engine.attach(reverb)
+        for s in samplers { engine.attach(s) }
+        // Samplers -> reverb -> mixer, in that order, with an explicit format at
+        // every stage so nothing in the chain is ever left format-less.
+        let stereoFormat = AVAudioFormat(standardFormatWithSampleRate: 44100, channels: 2)
+        for s in samplers {
+            engine.connect(s, to: reverb, format: stereoFormat)
         }
-        engine.connect(reverbNode, to: engine.mainMixerNode, format: stereoFormat)
-        // Only start audio when the app is truly active — starting during launch/transition
-        // makes the engine report running then die, and the next play() aborts the process.
-        // If we're not active yet, retry shortly rather than silently giving up forever.
+        engine.connect(reverb, to: engine.mainMixerNode, format: stereoFormat)
+
         guard UIApplication.shared.applicationState == .active else {
             log("waiting for app active")
             DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) { [weak self] in self?.setup() }
@@ -188,159 +159,85 @@ class AWAudioPlayer {
             return
         }
         guard engine.isRunning else { log("engine.start() returned but isRunning=false"); return }
-        // NOTE: voices are NOT pre-played here. Each voice starts individually,
-        // guarded, at the moment it's needed (startVoice) — never in bulk.
-        isSetup = true   // only after verified start
-        lastSetupFinishedAt = CFAbsoluteTimeGetCurrent()
-        log("engine running, \(voices.count) voices")
-        // Pre-warm full piano range for instant key response
-        synthQ.async { [weak self] in
-            guard let self else { return }
-            for m in 21...108 { _ = self.buildBuf(midi: m, dur: 0.8, prog: 0) }
+
+        soundBankURL = locateSoundBank()
+        if soundBankURL == nil {
+            log("WARNING: no system sound bank found -- instruments will be silent")
         }
-    }
 
-    // MARK: - Synthesize PCM buffer (background)
-    /// Restart engine/session if iOS suspended them (app init, interruptions, route changes)
-    private func ensureRunning() {
-        if !engine.isRunning { isSetup = false }   // dirty → setup() rebuilds the graph
-        // Voices start lazily per-schedule via startVoice — no bulk play
-    }
-
-    func buildBuf(midi: Int, dur: Double, prog: UInt8) -> AVAudioPCMBuffer? {
-        let key = (midi << 8) | Int(prog)
-        cacheLock.lock()
-        if let cached = bufCache[key] { cacheLock.unlock(); return cached }
-        cacheLock.unlock()
-        let fc   = Int(sr * min(dur + 0.1, 3.5))
-        let freq = 440.0 * pow(2.0, (Double(midi) - 69.0) / 12.0)
-        guard let fmt = AVAudioFormat(standardFormatWithSampleRate: sr, channels: 2),
-              let buf = AVAudioPCMBuffer(pcmFormat: fmt, frameCapacity: AVAudioFrameCount(fc)),
-              let L = buf.floatChannelData?[0], let R = buf.floatChannelData?[1]
-        else { return nil }
-        buf.frameLength = AVAudioFrameCount(fc)
-
-        let maxDur = dur
-        for i in 0..<fc {
-            let t   = Double(i) / sr
-            let env = min(1.0, t * 18.0) * max(0.0, 1.0 - (t / maxDur) * 1.05)
-            var s: Double
-
-            switch prog {
-            case 40...43:   // Strings — warm sawtooth + chorus
-                let ph  = (freq * t).truncatingRemainder(dividingBy: 1.0)
-                let ph2 = (freq * 1.004 * t).truncatingRemainder(dividingBy: 1.0)
-                s = ((2*ph-1)*0.5 + (2*ph2-1)*0.5) * env * 0.28
-
-            case 56...60:   // Brass — bright sawtooth + harmonic
-                let ph = (freq * t).truncatingRemainder(dividingBy: 1.0)
-                let brassy = (2*ph-1) + sin(2*Double.pi*freq*2*t)*0.3
-                s = brassy * env * 0.22
-
-            case 68...73:   // Woodwinds — flute-like sine + breathiness
-                let flute  = sin(2*Double.pi*freq*t)
-                let breath = sin(2*Double.pi*freq*2*t)*0.12 + sin(2*Double.pi*freq*3*t)*0.04
-                s = (flute + breath) * env * 0.32
-
-            case 46:        // Harp — pluck with fast decay
-                let decay = exp(-t * 8.0)
-                let lowH  = freq < 131.0 ? 0.45 : 0.25
-                let f1g   = freq < 131.0 ? 0.55 : 1.0
-                s = (sin(2*Double.pi*freq*t)*f1g + sin(2*Double.pi*freq*2*t)*lowH
-                   + sin(2*Double.pi*freq*3*t)*(lowH*0.5)) * decay * 0.45
-
-            case 47:        // Timpani — pitched noise + thump
-                let tump  = sin(2*Double.pi*freq*t) * exp(-t*5.0)
-                let noise = sin(2*Double.pi*freq*0.71*t) * exp(-t*12.0) * 0.3
-                s = (tump + noise) * 0.5
-
-            default:        // Piano — detuned unison strings + hammer transient
-                let d1 = exp(-t * 2.6)
-                let d2 = exp(-t * 4.2)
-                let d3 = exp(-t * 6.8)
-                let d4 = exp(-t * 11.0)
-                // Phone speakers can't reproduce fundamentals below ~130Hz.
-                // For low notes, shift energy into harmonics (missing-fundamental effect
-                // lets the ear still hear the correct low pitch).
-                let lowBoost = freq < 131.0 ? min(1.0, (131.0 - freq) / 100.0) : 0.0
-                let f1Gain = 1.0 - lowBoost * 0.65
-                let h2Gain = 0.34 + lowBoost * 0.55
-                let h3Gain = 0.13 + lowBoost * 0.40
-                let h4Gain = 0.05 + lowBoost * 0.25
-                // Real pianos have 2-3 slightly detuned strings per note
-                let u1 = sin(2*Double.pi*freq*t)
-                let u2 = sin(2*Double.pi*freq*1.0015*t)
-                let u3 = sin(2*Double.pi*freq*0.9985*t)
-                let p1 = (u1 + u2*0.7 + u3*0.7) / 2.4 * d1 * f1Gain
-                let p2 = sin(2*Double.pi*freq*2.001*t) * d2 * h2Gain
-                let p3 = sin(2*Double.pi*freq*3.003*t) * d3 * h3Gain
-                let p4 = sin(2*Double.pi*freq*4.006*t) * d4 * h4Gain
-                // Hammer strike transient (first ~30ms)
-                let hammer = t < 0.03 ? sin(2*Double.pi*freq*6.2*t) * exp(-t*90) * 0.25 : 0
-                s = (p1 + p2 + p3 + p4 + hammer) * env * 0.42
+        // Load default program 0 (Grand Piano) on every channel up front so the
+        // very first key press on any channel is instant.
+        if let bank = soundBankURL {
+            for (idx, s) in samplers.enumerated() {
+                let ch = UInt8(idx)
+                if let reason = AWTryCatch({
+                    try? s.loadSoundBankInstrument(at: bank, program: 0, bankMSB: 0x79, bankLSB: 0)
+                }) {
+                    log("loadSoundBankInstrument ch\(ch) EXCEPTION: \(reason)")
+                } else {
+                    loadedProgram[ch] = 0
+                }
             }
-
-            // Stereo spread based on octave
-            let spread = Float(0.1 + Double(midi - 21) / 87.0 * 0.8)
-            L[i] = Float(s) * (1.0 - spread * 0.15)
-            R[i] = Float(s) * (1.0 + spread * 0.15)
         }
-        cacheLock.lock(); bufCache[key] = buf; cacheLock.unlock()
-        return buf
+
+        isSetup = true
+        lastSetupFinishedAt = CFAbsoluteTimeGetCurrent()
+        log("engine running, \(samplers.count) sampler channels, bank=\(soundBankURL?.lastPathComponent ?? "none")")
+    }
+
+    /// Ensure the given channel's sampler has the requested program loaded
+    /// (loadSoundBankInstrument is relatively cheap once the bank file is
+    /// already mmap'd by iOS, but we still cache to avoid redundant calls).
+    private func ensureProgram(_ program: UInt8, onChannel ch: UInt8) {
+        guard let bank = soundBankURL else { return }
+        if loadedProgram[ch] == program { return }
+        let sampler = samplers[Int(ch)]
+        if let reason = AWTryCatch({
+            try? sampler.loadSoundBankInstrument(at: bank, program: program, bankMSB: 0x79, bankLSB: 0)
+        }) {
+            log("ensureProgram ch\(ch) prog\(program) EXCEPTION: \(reason)")
+        } else {
+            loadedProgram[ch] = program
+        }
     }
 
     // MARK: - Play single pitch (call from main thread)
     func playPitch(_ pitch: Pitch, instrumentName: String = "Grand Piano", duration: Double = 0.5) {
         setup()
-        let midi = max(21, min(108, pitch.midiNote))
-        let prog = AWInstrument.find(instrumentName).midiProgram
-        let key  = (midi << 8) | Int(prog)
         ensureRunning()
         guard engine.isRunning else { log("playPitch: engine not running"); return }
 
-        // INSTANT path: cached buffer schedules with zero latency
-        cacheLock.lock()
-        let cachedBuf = bufCache[key]
-        cacheLock.unlock()
-        if let cached = cachedBuf {
-            let v = nextVoice()
-            guard startVoice(v) else { log("playPitch: startVoice failed (cached)"); return }
-            safeSchedule(v, cached)           // fresh voice → plays NOW, mixes with others
-            log("playPitch: scheduled midi=\(midi) (cached), vol=\(engine.mainMixerNode.outputVolume)")
+        let midi = UInt8(max(21, min(108, pitch.midiNote)))
+        let prog = AWInstrument.find(instrumentName).midiProgram
+        let ch: UInt8 = 0   // solo key-press preview always uses channel 0
+        ensureProgram(prog, onChannel: ch)
+
+        let sampler = samplers[Int(ch)]
+        if let reason = AWTryCatch({ sampler.startNote(midi, withVelocity: 100, onChannel: ch) }) {
+            log("playPitch startNote EXCEPTION: \(reason)")
+            isSetup = false
             return
         }
-        // Cold path: synth in background then play
-        log("playPitch: synthesizing midi=\(midi)…")
-        synthQ.async { [weak self] in
-            guard let self else { return }
-            let buf = self.buildBuf(midi: midi, dur: duration, prog: prog)
-            DispatchQueue.main.async {
-                guard let buf, self.engine.isRunning else {
-                    self.log("playPitch: buf or engine nil after synth")
-                    return
-                }
-                let v = self.nextVoice()
-                guard self.startVoice(v) else { self.log("playPitch: startVoice failed (cold)"); return }
-                self.safeSchedule(v, buf)
-                self.log("playPitch: scheduled midi=\(midi) (cold), vol=\(self.engine.mainMixerNode.outputVolume)")
-            }
+        DispatchQueue.main.asyncAfter(deadline: .now() + duration) { [weak self] in
+            guard self != nil else { return }
+            _ = AWTryCatch({ sampler.stopNote(midi, onChannel: ch) })
         }
+        log("playPitch: midi=\(midi) prog=\(prog) ch=\(ch)")
     }
 
-    /// Pre-warm the FULL 88-key range for an instrument so every key is instant
+    /// Pre-load a program across the channel pool so switching instruments and
+    /// pressing a key feels instant rather than waiting on sound-bank loading.
     func prewarm(instrumentName: String) {
-        if !isSetup { setup() }
+        setup()
         let prog = AWInstrument.find(instrumentName).midiProgram
-        synthQ.async { [weak self] in
-            guard let self else { return }
-            for m in 21...108 { _ = self.buildBuf(midi: m, dur: 0.8, prog: prog) }
-        }
+        ensureProgram(prog, onChannel: 0)
     }
 
     // MARK: - Score playback (main thread)
     func play(document: ScoreDocument) {
         setup()
         ensureRunning()
+        guard engine.isRunning else { log("play: engine not running"); return }
         if isPlaying && !isPaused { return }
         if !isPaused { currentBeat = 0 }
         isPlaying = true; isPaused = false
@@ -349,37 +246,34 @@ class AWAudioPlayer {
         let beatSec = 60.0 / Double(document.tempo)
         let sixth   = beatSec / 4.0
 
-        // Extract notes on main thread
         let notes = extractNotes(from: document)
 
-        // Pre-synth all buffers in background, then schedule on main
-        synthQ.async { [weak self] in
-            guard let self else { return }
-            var items: [(delay: Double, buf: AVAudioPCMBuffer)] = []
-            for note in notes {
-                if let buf = self.buildBuf(midi: note.midi, dur: note.duration, prog: note.program) {
-                    items.append((note.startTime, buf))
-                }
-            }
-            let totalDur = items.map { $0.delay + 0.1 }.max() ?? 1.0
+        // Assign one MIDI channel per part (up to 16 simultaneous instrument
+        // parts) so each staff plays through its own sampler with its own
+        // loaded program.
+        var channelForProgram: [UInt8: UInt8] = [:]
+        var nextFreeChannel: UInt8 = 0
+        for note in notes where channelForProgram[note.program] == nil {
+            guard nextFreeChannel < UInt8(channelCount) else { break }
+            channelForProgram[note.program] = nextFreeChannel
+            ensureProgram(note.program, onChannel: nextFreeChannel)
+            nextFreeChannel += 1
+        }
 
-            DispatchQueue.main.async { [weak self] in
+        for note in notes {
+            let ch = channelForProgram[note.program] ?? 0
+            let sampler = samplers[Int(ch)]
+            let midi = UInt8(max(21, min(108, note.midi)))
+            DispatchQueue.main.asyncAfter(deadline: .now() + note.startTime) { [weak self] in
                 guard let self, self.isPlaying else { return }
-                guard self.engine.isRunning else { self.stop(); return }
-                // Host-time anchor is shared by ALL voices → overlapping notes mix correctly
-                let anchor = mach_absolute_time()
-                for item in items {
-                    let v = self.nextVoice()
-                    guard self.startVoice(v) else { continue }
-                    let noteTime = AVAudioTime(
-                        hostTime: anchor + AVAudioTime.hostTime(forSeconds: item.delay + 0.12)
-                    )
-                    self.safeSchedule(v, item.buf, at: noteTime)
-                }
+                _ = AWTryCatch({ sampler.startNote(midi, withVelocity: 95, onChannel: ch) })
+            }
+            DispatchQueue.main.asyncAfter(deadline: .now() + note.startTime + note.duration) { [weak self] in
+                guard self != nil else { return }
+                _ = AWTryCatch({ sampler.stopNote(midi, onChannel: ch) })
             }
         }
 
-        // Scrubber timer
         playTimer?.invalidate()
         playTimer = Timer.scheduledTimer(withTimeInterval: sixth, repeats: true) { [weak self] t in
             guard let self else { t.invalidate(); return }
@@ -391,13 +285,12 @@ class AWAudioPlayer {
     func pause() {
         playTimer?.invalidate(); playTimer = nil
         isPaused = true; isPlaying = false
-        for v in voices { _ = AWTryCatch({ v.stop() }) }
+        for s in samplers { for ch: UInt8 in 0..<UInt8(channelCount) { _ = AWTryCatch({ s.stopNote(0, onChannel: ch) }) } }
     }
-    func stop()  {
+    func stop() {
         playTimer?.invalidate(); playTimer = nil
         isPlaying = false; isPaused = false; currentBeat = 0
-        // Flush every voice's scheduled queue, then re-arm for instant key presses
-        for v in voices { _ = AWTryCatch({ v.stop() }) }
+        for s in samplers { for m: UInt8 in 21...108 { _ = AWTryCatch({ s.stopNote(m, onChannel: 0) }) } }
     }
     func seek(to p: Double) { currentBeat = p * totalBeats }
 
@@ -418,7 +311,7 @@ class AWAudioPlayer {
                                 startTime: beat*bs,
                                 duration: max(0.1, note.duration.beats*bs*0.88),
                                 program: prog,
-                                isTied: false
+                                channel: 0
                             ))
                         }
                         beat += ch.totalBeats

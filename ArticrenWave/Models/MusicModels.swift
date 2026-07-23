@@ -189,6 +189,13 @@ struct Tie: Identifiable, Codable {
     var fromChordID: UUID
     var toChordID: UUID
     var isSlur: Bool  // false = tie/carry (arcs ABOVE), true = slur (dips BELOW)
+    // Two independent tangent handles (near each endpoint) — dragging one adjusts
+    // the slope/steepness leaving that point; the curve stays a smooth single arc.
+    var startHandleDX: Double = 0
+    var startHandleDY: Double = 0
+    var endHandleDX: Double = 0
+    var endHandleDY: Double = 0
+    // Legacy single-handle fields kept for backward compatibility with older saved scores
     var controlDX: Double = 0
     var controlDY: Double = 0
 }

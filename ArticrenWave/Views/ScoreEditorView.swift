@@ -277,10 +277,12 @@ struct TieOverlayView: View {
         ZStack(alignment: .topLeading) {
             ForEach(partTies) { tie in
                 if let a = locate(tie.fromChordID), let b = locate(tie.toChordID) {
-                    TieCurve(tie: tie, a: a, b: b, accent: appState.theme.accent) { dx, dy in
+                    TieCurve(tie: tie, a: a, b: b, accent: appState.theme.accent) { sdx, sdy, edx, edy in
                         if let idx = scoreEngine.document.ties.firstIndex(where: { $0.id == tie.id }) {
-                            scoreEngine.document.ties[idx].controlDX = dx
-                            scoreEngine.document.ties[idx].controlDY = dy
+                            scoreEngine.document.ties[idx].startHandleDX = sdx
+                            scoreEngine.document.ties[idx].startHandleDY = sdy
+                            scoreEngine.document.ties[idx].endHandleDX   = edx
+                            scoreEngine.document.ties[idx].endHandleDY   = edy
                         }
                     } onDelete: {
                         scoreEngine.deleteTie(id: tie.id)
@@ -304,10 +306,12 @@ struct TieCurve: View {
     let a: (x: CGFloat, topY: CGFloat, botY: CGFloat)
     let b: (x: CGFloat, topY: CGFloat, botY: CGFloat)
     let accent: Color
-    let onControlChange: (Double, Double) -> Void
+    /// (startDX, startDY, endDX, endDY)
+    let onHandleChange: (Double, Double, Double, Double) -> Void
     let onDelete: () -> Void
 
-    @State private var dragCtl: CGSize? = nil
+    @State private var dragStart: CGSize? = nil
+    @State private var dragEnd:   CGSize? = nil
 
     var startPt: CGPoint {
         tie.isSlur ? CGPoint(x: a.x, y: a.botY + 12) : CGPoint(x: a.x, y: a.topY - 12)
@@ -315,45 +319,75 @@ struct TieCurve: View {
     var endPt: CGPoint {
         tie.isSlur ? CGPoint(x: b.x, y: b.botY + 12) : CGPoint(x: b.x, y: b.topY - 12)
     }
-    var ctlPt: CGPoint {
-        let midX = (startPt.x + endPt.x) / 2
-        let midY = (startPt.y + endPt.y) / 2
-        let arch: CGFloat = tie.isSlur ? 26 : -26   // slur dips down, tie arcs up
-        let dx = dragCtl?.width  ?? CGFloat(tie.controlDX)
-        let dy = dragCtl?.height ?? CGFloat(tie.controlDY)
-        return CGPoint(x: midX + dx, y: midY + arch + dy)
+
+    /// Default tangent length/direction before any manual drag — points the curve
+    /// up (Carry) or down (Slur), scaled to roughly a third of the span so short
+    /// and long carries/slurs both look proportional.
+    var baseTangent: CGFloat {
+        max(24, min(70, abs(endPt.x - startPt.x) * 0.35))
+    }
+    var archSign: CGFloat { tie.isSlur ? 1 : -1 }   // Canvas Y: down=+, up=-
+
+    var startHandlePt: CGPoint {
+        let dx = dragStart?.width  ?? CGFloat(tie.startHandleDX)
+        let dy = dragStart?.height ?? CGFloat(tie.startHandleDY)
+        return CGPoint(x: startPt.x + baseTangent + dx, y: startPt.y + archSign * baseTangent + dy)
+    }
+    var endHandlePt: CGPoint {
+        let dx = dragEnd?.width  ?? CGFloat(tie.endHandleDX)
+        let dy = dragEnd?.height ?? CGFloat(tie.endHandleDY)
+        return CGPoint(x: endPt.x - baseTangent + dx, y: endPt.y + archSign * baseTangent + dy)
     }
 
     var body: some View {
         ZStack {
             Path { p in
                 p.move(to: startPt)
-                p.addQuadCurve(to: endPt, control: ctlPt)
+                p.addCurve(to: endPt, control1: startHandlePt, control2: endHandlePt)
             }
             .stroke(Color.white.opacity(0.85),
                     style: StrokeStyle(lineWidth: 1.8, lineCap: .round))
 
-            // Draggable tangent handle at curve midpoint
-            Circle()
-                .fill(accent.opacity(0.9))
-                .frame(width: 10, height: 10)
-                .position(x: (startPt.x + 2*ctlPt.x + endPt.x)/4,
-                          y: (startPt.y + 2*ctlPt.y + endPt.y)/4)
-                .gesture(
-                    DragGesture(minimumDistance: 2)
-                        .onChanged { v in
-                            dragCtl = CGSize(
-                                width:  CGFloat(tie.controlDX) + v.translation.width,
-                                height: CGFloat(tie.controlDY) + v.translation.height
-                            )
-                        }
-                        .onEnded { _ in
-                            if let d = dragCtl { onControlChange(Double(d.width), Double(d.height)) }
-                            dragCtl = nil
-                        }
+            // Handle near the START — dragging adjusts the slope/steepness leaving this note
+            tangentHandle(at: startHandlePt) { v in
+                dragStart = CGSize(
+                    width:  CGFloat(tie.startHandleDX) + v.translation.width,
+                    height: CGFloat(tie.startHandleDY) + v.translation.height
                 )
-                .onLongPressGesture { onDelete() }
+            } onEnd: {
+                if let d = dragStart {
+                    onHandleChange(Double(d.width), Double(d.height), tie.endHandleDX, tie.endHandleDY)
+                }
+                dragStart = nil
+            }
+
+            // Handle near the END — dragging adjusts the slope/steepness arriving at this note
+            tangentHandle(at: endHandlePt) { v in
+                dragEnd = CGSize(
+                    width:  CGFloat(tie.endHandleDX) + v.translation.width,
+                    height: CGFloat(tie.endHandleDY) + v.translation.height
+                )
+            } onEnd: {
+                if let d = dragEnd {
+                    onHandleChange(tie.startHandleDX, tie.startHandleDY, Double(d.width), Double(d.height))
+                }
+                dragEnd = nil
+            }
         }
+    }
+
+    @ViewBuilder
+    func tangentHandle(at point: CGPoint, onChange: @escaping (DragGesture.Value) -> Void, onEnd: @escaping () -> Void) -> some View {
+        Circle()
+            .fill(accent.opacity(0.9))
+            .frame(width: 12, height: 12)
+            .position(point)
+            .gesture(
+                DragGesture(minimumDistance: 2)
+                    .onChanged(onChange)
+                    .onEnded { _ in onEnd() }
+            )
+            .onLongPressGesture { onDelete() }
     }
 }
 

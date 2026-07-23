@@ -318,12 +318,13 @@ struct NaturalSymbol: View {
 struct TieCurveSymbol: View {
     var color: Color = .white
     var size: CGFloat = 24
-    var isSlur: Bool = false // slur = below, tie = above
+    var isSlur: Bool = false // false = Carry (arcs ABOVE), true = Slur (dips BELOW)
     var body: some View {
         Canvas { ctx, sz in
             var p = Path()
-            let flipY: Double = isSlur ? 1 : -1
-            let midY = sz.height * (isSlur ? 0.25 : 0.75)
+            // Canvas Y increases downward: a SMALLER midY pulls the curve UP (Carry),
+            // a LARGER midY pushes the curve DOWN (Slur).
+            let midY = sz.height * (isSlur ? 0.75 : 0.25)
             p.move(to: CGPoint(x: sz.width*0.05, y: sz.height*0.5))
             p.addCurve(
                 to: CGPoint(x: sz.width*0.95, y: sz.height*0.5),
