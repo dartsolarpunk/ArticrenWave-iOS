@@ -610,15 +610,22 @@ struct AWDebugConsoleView: View {
     @State private var refreshTick = 0
     let timer = Timer.publish(every: 1, on: .main, in: .common).autoconnect()
 
+    func color(for line: String) -> Color {
+        if line.contains("EXCEPTION") || line.contains("FAILURE") || line.contains("ERROR") { return .red }
+        if line.contains("[AUTH]") { return .cyan.opacity(0.9) }
+        if line.contains("[AUDIO]") { return .white.opacity(0.75) }
+        return .white.opacity(0.6)
+    }
+
     var body: some View {
         NavigationStack {
             ScrollViewReader { proxy in
                 ScrollView {
                     LazyVStack(alignment: .leading, spacing: 4) {
-                        ForEach(Array(AWAudioPlayer.shared.debugLog.enumerated()), id: \.offset) { idx, line in
+                        ForEach(Array(AWDebugLog.shared.entries.enumerated()), id: \.offset) { idx, line in
                             Text(line)
                                 .font(.system(size: 11, design: .monospaced))
-                                .foregroundColor(line.contains("EXCEPTION") ? .red : .white.opacity(0.75))
+                                .foregroundColor(color(for: line))
                                 .id(idx)
                         }
                     }
@@ -627,7 +634,7 @@ struct AWDebugConsoleView: View {
                 .background(Color.black)
                 .onReceive(timer) { _ in
                     refreshTick += 1
-                    if let last = AWAudioPlayer.shared.debugLog.indices.last {
+                    if let last = AWDebugLog.shared.entries.indices.last {
                         withAnimation { proxy.scrollTo(last, anchor: .bottom) }
                     }
                 }
@@ -638,7 +645,7 @@ struct AWDebugConsoleView: View {
             .toolbarColorScheme(.dark, for: .navigationBar)
             .toolbar {
                 ToolbarItem(placement: .navigationBarLeading) {
-                    Button("Clear") { AWAudioPlayer.shared.debugLog.removeAll() }
+                    Button("Clear") { AWDebugLog.shared.clear() }
                         .foregroundColor(.white.opacity(0.6))
                 }
                 ToolbarItem(placement: .navigationBarTrailing) {

@@ -86,14 +86,19 @@ class AuthManager {
 
     func restoreSession() {
         guard let id = UserDefaults.standard.string(forKey: "appleUserID"),
-              !id.isEmpty else { return }
+              !id.isEmpty else {
+            AWDebugLog.shared.log("restoreSession: no saved appleUserID — showing sign-in screen", category: "AUTH")
+            return
+        }
         userID       = id
         userFullName = UserDefaults.standard.string(forKey: "appleUserName") ?? "Composer"
         userEmail    = UserDefaults.standard.string(forKey: "appleUserEmail") ?? ""
         isSignedIn   = true
+        AWDebugLog.shared.log("restoreSession: restored uid=\(id) name='\(userFullName)'", category: "AUTH")
     }
 
     func signOut() {
+        AWDebugLog.shared.log("signOut called (was uid=\(userID))", category: "AUTH")
         isSignedIn   = false
         userID       = ""
         userFullName = ""

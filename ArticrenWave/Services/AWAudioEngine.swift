@@ -52,6 +52,7 @@ class AWAudioPlayer {
         let stamp = String(format: "%.2f", CFAbsoluteTimeGetCurrent().truncatingRemainder(dividingBy: 1000))
         debugLog.append("[\(stamp)] \(msg)")
         if debugLog.count > 200 { debugLog.removeFirst(debugLog.count - 200) }
+        AWDebugLog.shared.log(msg, category: "AUDIO")
     }
 
     var progress: Double { totalBeats > 0 ? currentBeat / totalBeats : 0 }

@@ -72,15 +72,20 @@ struct AWWelcomeView: View {
                     AWAppleSignInButton { result in
                         switch result {
                         case .success(let auth):
-                            guard let cred = auth.credential as? ASAuthorizationAppleIDCredential else { return }
+                            guard let cred = auth.credential as? ASAuthorizationAppleIDCredential else {
+                                AWDebugLog.shared.log("success but credential was NOT ASAuthorizationAppleIDCredential — got \(type(of: auth.credential)) instead", category: "AUTH")
+                                return
+                            }
                             let name = [cred.fullName?.givenName, cred.fullName?.familyName]
                                 .compactMap { $0 }.joined(separator: " ")
                             let uid = cred.user
                             let email = cred.email ?? UserDefaults.standard.string(forKey: "appleUserEmail") ?? ""
                             let savedName = UserDefaults.standard.string(forKey: "appleUserName") ?? ""
+                            AWDebugLog.shared.log("credential OK — uid=\(uid) name='\(name)' email='\(email)' savedName='\(savedName)'", category: "AUTH")
 
                             if savedName.isEmpty && name.isEmpty {
                                 // First time — show username picker
+                                AWDebugLog.shared.log("routing to username picker (first sign-in)", category: "AUTH")
                                 pendingUserID = uid
                                 pendingName   = name
                                 pendingEmail  = email
@@ -88,6 +93,7 @@ struct AWWelcomeView: View {
                             } else {
                                 // Returning user
                                 let finalName = name.isEmpty ? savedName : name
+                                AWDebugLog.shared.log("returning user — signing in as '\(finalName)'", category: "AUTH")
                                 UserDefaults.standard.set(uid, forKey: "appleUserID")
                                 if !finalName.isEmpty { UserDefaults.standard.set(finalName, forKey: "appleUserName") }
                                 if !email.isEmpty { UserDefaults.standard.set(email, forKey: "appleUserEmail") }
@@ -100,12 +106,33 @@ struct AWWelcomeView: View {
                                 }
                             }
                         case .failure(let err):
-                            let code = (err as NSError).code
-                            // 1001 = user cancelled, 1000 = TestFlight/unknown (not a real error)
-                            if code != 1001 && code != 1000 {
-                                authManager.authError = "Sign in unavailable. Please try Continue as Guest."
+                            let nsErr = err as NSError
+                            let code = nsErr.code
+                            // Named, human-readable meaning for every ASAuthorizationError code —
+                            // no longer silently treating 1000 as "not a real error." 1000
+                            // (.unknown) is one of the MOST common real Sign in with Apple
+                            // failures and almost always points to a genuine configuration
+                            // problem (missing/misconfigured Sign in with Apple capability,
+                            // unverified associated domain, provisioning profile without the
+                            // entitlement, or running in an environment Apple's ID service
+                            // can't complete auth in). Hiding it removed the only evidence
+                            // that could explain why sign-in "doesn't work."
+                            let meaning: String
+                            switch code {
+                            case 1000: meaning = "unknown — usually a real config problem: check Sign in with Apple capability + entitlement, associated domain verification, and provisioning profile"
+                            case 1001: meaning = "canceled — user dismissed the sheet, not a bug"
+                            case 1002: meaning = "invalidResponse"
+                            case 1003: meaning = "notHandled"
+                            case 1004: meaning = "failed — Apple ID service explicitly rejected the request"
+                            case 1005: meaning = "notInteractive"
+                            default:   meaning = "unrecognized code"
+                            }
+                            AWDebugLog.shared.log("FAILURE code=\(code) (\(meaning)) domain=\(nsErr.domain) desc=\(nsErr.localizedDescription)", category: "AUTH")
+
+                            if code == 1001 {
+                                authManager.authError = nil   // user cancellation — not worth surfacing
                             } else {
-                                authManager.authError = nil
+                                authManager.authError = "Sign in unavailable (code \(code)). Please try Continue as Guest, or check Debug Console for details."
                             }
                         }
                     }
@@ -379,23 +406,34 @@ struct AWAppleSignInButton: UIViewRepresentable {
         init(onCompletion: @escaping (Result<ASAuthorization, Error>) -> Void) { self.onCompletion = onCompletion }
 
         @objc func tapped() {
+            AWDebugLog.shared.log("Sign in with Apple tapped", category: "AUTH")
             let provider = ASAuthorizationAppleIDProvider()
             let request  = provider.createRequest()
             request.requestedScopes = [.fullName, .email]
             let controller = ASAuthorizationController(authorizationRequests: [request])
             controller.delegate = self
             controller.presentationContextProvider = self
+            AWDebugLog.shared.log("performRequests() called", category: "AUTH")
             controller.performRequests()
         }
         func presentationAnchor(for controller: ASAuthorizationController) -> ASPresentationAnchor {
-            UIApplication.shared.connectedScenes
+            let anchor = UIApplication.shared.connectedScenes
                 .compactMap { $0 as? UIWindowScene }.flatMap { $0.windows }
-                .first(where: { $0.isKeyWindow }) ?? UIWindow()
+                .first(where: { $0.isKeyWindow })
+            AWDebugLog.shared.log("presentationAnchor resolved: \(anchor != nil ? "found key window" : "NO KEY WINDOW — this alone can cause silent failure")", category: "AUTH")
+            return anchor ?? UIWindow()
         }
         func authorizationController(controller: ASAuthorizationController, didCompleteWithAuthorization auth: ASAuthorization) {
+            let credType = String(describing: type(of: auth.credential))
+            AWDebugLog.shared.log("didCompleteWithAuthorization — credential type: \(credType)", category: "AUTH")
             onCompletion(.success(auth))
         }
         func authorizationController(controller: ASAuthorizationController, didCompleteWithError error: Error) {
+            let nsErr = error as NSError
+            AWDebugLog.shared.log(
+                "didCompleteWithError — domain=\(nsErr.domain) code=\(nsErr.code) desc=\(nsErr.localizedDescription) userInfo=\(nsErr.userInfo)",
+                category: "AUTH"
+            )
             onCompletion(.failure(error))
         }
     }
